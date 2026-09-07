@@ -21,13 +21,17 @@ export function evaluatePolicy(policy: PolicyRule[], call: PolicyCall): Expectat
 			case "max-number": {
 				if (rule.toolId !== call.toolId) break;
 				const value = call.args[rule.field];
-				if (typeof value === "number" && value > rule.value) return "denied";
+				// A governed field that is absent or of the wrong type fails closed.
+				// Permitting it would let a malformed call slip past its own cap, and
+				// because assertScenarioConsistent derives expectations from this
+				// function, a malformed scenario would look self-consistent.
+				if (typeof value !== "number" || value > rule.value) return "denied";
 				break;
 			}
 			case "allowed-values": {
 				if (rule.toolId !== call.toolId) break;
 				const value = call.args[rule.field];
-				if (typeof value === "string" && !rule.values.includes(value)) return "denied";
+				if (typeof value !== "string" || !rule.values.includes(value)) return "denied";
 				break;
 			}
 			case "actor-deny":
