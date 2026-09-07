@@ -45,10 +45,15 @@
 **Files:**
 - Create: `package.json`, `tsconfig.json`, `biome.json`, `vitest.config.ts`
 - Create: `src/core/types.ts`
-- Test: `src/core/types.test.ts`
 
 **Interfaces:**
 - Produces: every type below. All later tasks import from `src/core/types.ts`.
+
+**No test file for this task.** `types.ts` contains only type declarations and no
+runtime behavior, so `tsc --noEmit` is its verification. A vitest file asserting on a
+hand-written literal would test the literal, not the types, and could not fail
+red-first. Behavioral coverage of the shapes defined here arrives with their first
+consumer in Task 2.
 
 - [ ] **Step 1: Create `package.json`**
 
@@ -215,43 +220,12 @@ export type Adapter = {
 };
 ```
 
-- [ ] **Step 7: Write the failing test**
-
-```ts
-// src/core/types.test.ts
-import { expect, it } from "vitest";
-import type { Scenario } from "./types.js";
-
-it("accepts a scenario with parallel attempts sharing a step", () => {
-	const scenario: Scenario = {
-		id: "example",
-		class: "parallel-siblings",
-		description: "one gated call beside one ungated call",
-		tools: [
-			{ id: "safe", description: "harmless", fields: [{ name: "note", type: "string" }] },
-			{ id: "danger", description: "harmful", fields: [{ name: "target", type: "string" }] },
-		],
-		policy: [{ kind: "require-approval", toolId: "danger" }],
-		attempts: [
-			{ toolId: "safe", args: { note: "hi" }, expect: "executed", step: 0 },
-			{ toolId: "danger", args: { target: "prod" }, expect: "escalated", step: 0 },
-		],
-	};
-	expect(scenario.attempts.filter((a) => a.step === 0)).toHaveLength(2);
-});
-```
-
-- [ ] **Step 8: Run the test**
-
-Run: `npm test`
-Expected: PASS (this is a type-level test; it fails only if `types.ts` is missing or misshapen).
-
-- [ ] **Step 9: Run type-check and lint**
+- [ ] **Step 7: Run type-check and lint**
 
 Run: `npm run type-check && npm run check`
 Expected: both exit 0.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
