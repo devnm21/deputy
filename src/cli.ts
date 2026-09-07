@@ -36,6 +36,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 
 	const markdown = renderMarkdown(report);
 	await writeFile(join(outDir, `${stamp}.md`), markdown);
+	await writeFile(join(outDir, "latest.json"), JSON.stringify(report, null, 2));
+	await writeFile(join(outDir, "latest.md"), markdown);
 	console.log(markdown);
 
 	// A leaked call is a finding, not a harness error. Only adapter crashes fail the run.
