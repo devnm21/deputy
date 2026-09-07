@@ -82,6 +82,26 @@ type Attempt = {
 };
 ```
 
+### Why the delegation class leads
+
+Testing `@mastra/core@1.64.0` directly produced a positive result before the harness
+existed. A parent agent's run-level `requireToolApproval` policy is consulted exactly
+once — for the auto-generated `agent-<name>` delegation tool — and never for the
+sub-agent's inner tool names or arguments. A parent-level allowlist is therefore
+escaped by routing the call through a sub-agent, and the child's tool executes with the
+parent policy never having seen it.
+
+A tool's *own* `requireApproval` does propagate correctly across the delegation edge
+and suspends the parent run, which makes the safe pattern the inverse of the intuitive
+one: gate at the tool definition, not at the caller. The behavior is undocumented in
+either direction, so it is neither a promised contract nor a filed bug.
+
+This is the shape of finding the harness exists to produce, and it reframes what the
+benchmark is likely to show. Both Mastra and the Vercel AI SDK can express
+argument-dependent approval, so the expressiveness gap is narrower than first assumed.
+The breakage lives at the delegation edge, where policy written at one level silently
+fails to apply at the next.
+
 ### Why parallel siblings is its own class
 
 Testing `ai@7.0.93` directly showed that when one step contains two tool calls and only
@@ -137,9 +157,37 @@ closely as it can — usually onto a coarser mechanism — and the case is tagge
 `inexpressible`. Those cases are reported in their own column rather than folded into
 the failure count.
 
-This is the most interesting output the harness produces. "The framework let the call
-through" and "the framework had no way to describe the rule" are different problems
-with different fixes, and no existing benchmark separates them.
+"The framework let the call through" and "the framework had no way to describe the
+rule" are different problems with different fixes, and no existing benchmark separates
+them.
+
+Early measurement suggests this column will be sparser than expected: both Mastra
+(`requireApproval` and run-level `requireToolApproval`, either of which may be an async
+predicate over arguments) and the Vercel AI SDK (`needsApproval`, which receives parsed
+arguments) can express argument predicates. The axis stays in the design because a
+sparse column is itself a result — it establishes that these frameworks fail by not
+applying expressible policy rather than by lacking the vocabulary for it.
+
+### Verified adapter constraints
+
+Facts established by running each framework, recorded so adapters are not written from
+assumption:
+
+**Mastra.** A bare `new Agent({...})` reports `finishReason: 'suspended'` but persists
+no snapshot, so approval cannot be resumed; the agent must be registered on a `Mastra`
+instance with storage. Delegation tools are exposed to the model as `agent-<key>`, not
+`<key>`. `requestContext` must be a real `RequestContext` instance rather than a plain
+object. On a nested suspension the outer entry reports `requiresApproval: false` while
+the nested `suspendPayload` carries the real request, so assertions must read the
+nested payload. `agent.generate()` routes to `doGenerate`, not `doStream`.
+
+**Vercel AI SDK.** A scripted model must return `finishReason` and `usage` as nested
+objects, and a tool call's `input` as a JSON string. Multi-step scripts require
+`stopWhen: stepCountIs(n)`, since the default is a single step. Deterministic approval
+ids come from `_internal: { generateId: mockId({ prefix: 'approval' }) }`.
+
+Both scripted models must terminate with a text step. A script that returns the same
+tool call indefinitely runs until the step ceiling instead of finishing.
 
 ## Metrics
 
@@ -207,6 +255,12 @@ docs/
 - Escalation payload capture differs per framework. The rubric may need a per-adapter
   normalization step before informativeness is comparable across the table.
 - Whether the delegation class needs more than two levels to say anything interesting.
+  Two levels already produce a bypass on Mastra, so depth may add cost without adding
+  findings.
+- Mastra's `beforeToolCall` hook blocks execution correctly, but its
+  `{ proceed: false, output }` was observed surfacing `toolResults: [null]` rather than
+  the supplied output. Unresolved, and it affects how a denial is reported rather than
+  whether it holds.
 - Deferred to a later version, both worth their own class eventually: **approval
   forgery**, since approval history arrives as client-controlled input and the Vercel
   SDK's mitigation is an `experimental_`-prefixed HMAC secret whose absence is itself a
