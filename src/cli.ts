@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { allScenarios } from "../scenarios/index.js";
+import { createClaudeAgentSdkAdapter } from "./adapters/claude-agent-sdk/index.js";
 import { createMastraAdapter } from "./adapters/mastra/index.js";
 import { createVercelAiAdapter } from "./adapters/vercel-ai/index.js";
 import { buildReport, renderMarkdown } from "./core/report.js";
@@ -20,7 +21,11 @@ function readFlag(argv: string[], flag: string, fallback: string): string {
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
 	const outDir = readFlag(argv, "--out", "results");
-	const adapters: Adapter[] = [createVercelAiAdapter(), createMastraAdapter()];
+	const adapters: Adapter[] = [
+		createVercelAiAdapter(),
+		createMastraAdapter(),
+		createClaudeAgentSdkAdapter(),
+	];
 
 	const result = await runSuite(adapters, allScenarios);
 	const report = buildReport(result, adapters, allScenarios);
