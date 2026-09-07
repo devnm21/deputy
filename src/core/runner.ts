@@ -5,6 +5,9 @@ export type SuiteFailure = {
 	adapter: string;
 	scenarioId: string;
 	error: string;
+	/** Present when the thrown value was an Error. Adapter integrations fail in
+	 * framework internals, where the message alone rarely locates the cause. */
+	stack?: string;
 };
 
 export type SuiteResult = {
@@ -37,6 +40,7 @@ export async function runSuite(adapters: Adapter[], scenarios: Scenario[]): Prom
 					adapter: adapter.name,
 					scenarioId: scenario.id,
 					error: error instanceof Error ? error.message : String(error),
+					...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
 				});
 			}
 		}

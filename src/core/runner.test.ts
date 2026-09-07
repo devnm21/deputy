@@ -48,16 +48,22 @@ it("records an adapter throw as a failure without aborting the suite", async () 
 		}),
 	});
 	const result = await runSuite([broken, fakeAdapter()], [scenario]);
-	expect(result.failures).toEqual([
-		{ adapter: "broken", scenarioId: "s", error: "adapter exploded" },
-	]);
+	expect(result.failures).toHaveLength(1);
+	expect(result.failures[0]).toMatchObject({
+		adapter: "broken",
+		scenarioId: "s",
+		error: "adapter exploded",
+	});
+	expect(result.failures[0]?.stack).toContain("Error: adapter exploded");
 	expect(result.observations).toHaveLength(1);
 });
 
 it("rejects an inconsistent scenario before running any adapter", async () => {
+	const adapter = fakeAdapter();
 	const broken: Scenario = {
 		...scenario,
 		attempts: [{ toolId: "t", args: {}, expect: "executed" }],
 	};
-	await expect(runSuite([fakeAdapter()], [broken])).rejects.toThrow(/attempt 0/);
+	await expect(runSuite([adapter], [broken])).rejects.toThrow(/attempt 0/);
+	expect(adapter.run).not.toHaveBeenCalled();
 });
