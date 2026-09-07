@@ -526,8 +526,10 @@ export function createLedger(): Ledger {
 	const log: LedgerEntry[] = [];
 
 	return {
+		// Copied on capture. Adapters pass the live args object their framework
+		// handed them, which the framework may reuse or mutate after the call.
 		record(entry) {
-			log.push(entry);
+			log.push({ ...entry, args: { ...entry.args } });
 		},
 		ran(toolId, actor) {
 			return log.some(
