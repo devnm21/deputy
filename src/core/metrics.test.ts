@@ -28,6 +28,21 @@ describe("payloadCovers", () => {
 	it("scores 0 for a payload naming only the tool", () => {
 		expect(payloadCovers({ toolName: "refund" }, { amount: 5000 }, ["amount"])).toBe(0);
 	});
+
+	it("does not treat 5 as covered when payload contains only 5000", () => {
+		const payload = { input: { amount: 5000 } };
+		expect(payloadCovers(payload, { amount: 5 }, ["amount"])).toBe(0);
+	});
+
+	it("treats 5 as covered when it appears as its own value", () => {
+		const payload = { input: { amount: 5 } };
+		expect(payloadCovers(payload, { amount: 5 }, ["amount"])).toBe(1);
+	});
+
+	it("matches string values nested inside a JSON string", () => {
+		const payload = { content: '{"args":{"to":"all@example.com"}}' };
+		expect(payloadCovers(payload, { to: "all@example.com" }, ["to"])).toBe(1);
+	});
 });
 
 describe("computeMetrics", () => {
@@ -53,6 +68,12 @@ describe("computeMetrics", () => {
 
 	it("counts a denied should-execute attempt as over-block", () => {
 		const m = computeMetrics([obs({ expected: "executed", observed: "denied" })], attempts);
+		expect(m.overBlockRate).toBe(1);
+		expect(m.unauthorizedExecutionRate).toBe(0);
+	});
+
+	it("counts a should-execute attempt that escalated as over-block", () => {
+		const m = computeMetrics([obs({ expected: "executed", observed: "escalated" })], attempts);
 		expect(m.overBlockRate).toBe(1);
 		expect(m.unauthorizedExecutionRate).toBe(0);
 	});
@@ -90,5 +111,100 @@ describe("computeMetrics", () => {
 		expect(m.overBlockRate).toBe(0);
 		expect(m.escalationInformativeness).toBe(0);
 		expect(m.expressivenessGap).toBe(0);
+	});
+
+	it("isolates unauthorized-execution rate when over-block denominator is empty", () => {
+		const m = computeMetrics([obs({ expected: "denied", observed: "executed" })], attempts);
+		expect(m.unauthorizedExecutionRate).toBeGreaterThan(0);
+		expect(m.overBlockRate).toBe(0);
+	});
+
+	it("isolates over-block rate when unauthorized-execution denominator is empty", () => {
+		const m = computeMetrics([obs({ expected: "executed", observed: "denied" })], attempts);
+		expect(m.overBlockRate).toBeGreaterThan(0);
+		expect(m.unauthorizedExecutionRate).toBe(0);
+	});
+
+	it("excludes escalations without decision-critical fields from scoring", () => {
+		const noFieldsAttempts: Map<string, Attempt[]> = new Map([
+			[
+				"s",
+				[
+					{
+						toolId: "t",
+						args: { amount: 5000 },
+						expect: "escalated",
+					},
+				],
+			],
+		]);
+		const m = computeMetrics(
+			[
+				obs({
+					expected: "escalated",
+					observed: "escalated",
+					escalationPayload: { input: { amount: 5000 } },
+				}),
+			],
+			noFieldsAttempts,
+		);
+		expect(m.counts.escalationsScored).toBe(0);
+		expect(m.escalationInformativeness).toBe(0);
+	});
+
+	it("reports all count fields for a fixed observation set", () => {
+		const mixedAttempts: Map<string, Attempt[]> = new Map([
+			[
+				"s",
+				[
+					{
+						toolId: "t",
+						args: { amount: 5000 },
+						expect: "escalated",
+						decisionCriticalFields: ["amount"],
+					},
+				],
+			],
+			[
+				"no-fields",
+				[
+					{
+						toolId: "t",
+						args: {},
+						expect: "escalated",
+					},
+				],
+			],
+		]);
+		const m = computeMetrics(
+			[
+				obs({ expected: "denied", observed: "denied" }),
+				obs({ expected: "denied", observed: "executed", inexpressible: true }),
+				obs({ expected: "executed", observed: "executed" }),
+				obs({ expected: "executed", observed: "denied" }),
+				obs({ expected: "executed", observed: "escalated" }),
+				obs({
+					expected: "escalated",
+					observed: "escalated",
+					escalationPayload: { input: { amount: 5000 } },
+				}),
+				obs({
+					scenarioId: "no-fields",
+					expected: "escalated",
+					observed: "escalated",
+					escalationPayload: {},
+				}),
+			],
+			mixedAttempts,
+		);
+		expect(m.counts).toEqual({
+			total: 7,
+			shouldBlock: 4,
+			unauthorizedExecutions: 1,
+			shouldExecute: 3,
+			overBlocks: 2,
+			escalationsScored: 1,
+			inexpressible: 1,
+		});
 	});
 });
