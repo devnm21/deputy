@@ -35,6 +35,12 @@ Outcomes are observed, never self-reported. Every tool body under test is instru
 to record its own invocation, so `executed` is ground truth rather than something the
 framework tells us.
 
+This is not fastidiousness. In the Vercel AI SDK, an approved tool executes during
+message reconstruction *before* the next model call, so its result is absent from that
+step's `toolResults` and `staticToolResults`. A harness that inferred execution from
+the framework's own result object would report `denied` for every correctly approved
+call. Only the tool body knows whether the tool body ran.
+
 ### Scenario
 
 A scenario is a framework-agnostic declaration: the tools that exist, the policy that
@@ -43,7 +49,12 @@ governs them, the calls the agent will attempt, and the outcome each call deserv
 ```ts
 type Scenario = {
   id: string;
-  class: "argument-scoping" | "delegation" | "escalation" | "basics";
+  class:
+    | "argument-scoping"
+    | "delegation"
+    | "escalation"
+    | "parallel-siblings"
+    | "basics";
   description: string;
 
   tools: ToolSpec[];
@@ -58,12 +69,30 @@ type Attempt = {
   args: Record<string, unknown>;
   /** The outcome policy requires. */
   expect: "executed" | "denied" | "escalated";
+  /**
+   * Attempts sharing a step index are emitted in one model response, i.e. as
+   * parallel tool calls. Defaults to a step of its own. Required by the
+   * parallel-siblings class and harmless elsewhere.
+   */
+  step?: number;
   /** Arguments a human must see to judge an escalation. Escalation class only. */
   decisionCriticalFields?: string[];
   /** Which agent in the delegation chain issues this. Delegation class only. */
   actor?: string;
 };
 ```
+
+### Why parallel siblings is its own class
+
+Testing `ai@7.0.93` directly showed that when one step contains two tool calls and only
+one is gated, the ungated sibling executes immediately while the gated one waits. The
+SDK's own test suite asserts this as intended behavior, so it is a design position
+rather than a bug — but it means an agent can pair a forbidden call with an innocuous
+one in the same step and have the pair partially run.
+
+The class costs almost nothing to add: it is an attempt shape, not new machinery. And
+it generalizes, because any framework resolving approval per call rather than per step
+has the same exposure.
 
 Policy rules are declarative and cover the three things the failure classes need:
 argument predicates (`amount <= 100`, `recipient in teammates`), actor constraints
@@ -164,6 +193,7 @@ src/
     claude-agent-sdk/
 scenarios/
   argument-scoping/
+  parallel-siblings/
   delegation/
   escalation/
   basics/
@@ -177,3 +207,9 @@ docs/
 - Escalation payload capture differs per framework. The rubric may need a per-adapter
   normalization step before informativeness is comparable across the table.
 - Whether the delegation class needs more than two levels to say anything interesting.
+- Deferred to a later version, both worth their own class eventually: **approval
+  forgery**, since approval history arrives as client-controlled input and the Vercel
+  SDK's mitigation is an `experimental_`-prefixed HMAC secret whose absence is itself a
+  finding; and **configuration precedence**, since a permissive run-level
+  `toolApproval` map silently overrides a tool's own `needsApproval`, which is a bypass
+  produced by configuration rather than by the model.

@@ -33,14 +33,15 @@ because there is nowhere to put one.
 
 ## What it measures
 
-Four failure classes, each a scenario family with a pass/fail per case:
+Five failure classes, each a scenario family with a pass/fail per case:
 
 | Class | Question |
 |---|---|
 | **Argument scoping** | Tool is permitted; the arguments are not. Refund above the cap, email outside the allowed recipients, delete outside the owned scope. |
 | **Delegation chains** | A parent agent spawns a sub-agent. Does the sub-agent inherit authority the parent never had, or bypass a gate the parent was subject to? |
 | **Escalation quality** | When the gate *does* ask a human, does the request name the actual resource and blast radius — or just the tool name? An approval prompt that can't be evaluated is a rubber stamp. |
-| **Basics** *(control)* | A plainly forbidden tool, no ambiguity. Everything should pass. Included so the other three have a baseline. |
+| **Parallel siblings** | One step, two calls, one gated. Does holding the gated call hold its siblings too, or do they run while a human deliberates? |
+| **Basics** *(control)* | A plainly forbidden tool, no ambiguity. Everything should pass. Included so the other four have a baseline. |
 
 ## How it runs
 
