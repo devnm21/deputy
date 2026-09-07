@@ -29,3 +29,25 @@ it("records repeat executions separately", () => {
 	ledger.record({ toolId: "delete", args: { id: 2 } });
 	expect(ledger.entries()).toHaveLength(2);
 });
+
+it("returns a copy from entries so callers cannot mutate ledger state", () => {
+	const ledger = createLedger();
+	ledger.record({ toolId: "refund", args: { amount: 5000 } });
+
+	const snapshot = ledger.entries();
+	snapshot.push({ toolId: "fabricated", args: { forged: true } });
+
+	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 } }]);
+	expect(ledger.entries()).toHaveLength(1);
+});
+
+it("copies args on record so later mutations do not rewrite history", () => {
+	const ledger = createLedger();
+	const args: Record<string, unknown> = { amount: 5000 };
+
+	ledger.record({ toolId: "refund", args });
+	args.amount = 9999;
+	args.tampered = true;
+
+	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 } }]);
+});
