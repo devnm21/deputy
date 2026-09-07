@@ -36,6 +36,11 @@ export function payloadCovers(
 		const value = args[field];
 		if (value === undefined) return false;
 		const serialized = JSON.stringify(value);
+		// A string value is tried unquoted as well. When an adapter nests
+		// arguments inside a JSON string, stringifying the payload escapes the
+		// inner quotes, so the quoted form is absent while the bare value is
+		// present. Token boundaries still apply, so this does not reopen the
+		// substring false positive.
 		return (
 			containsToken(haystack, serialized) ||
 			(typeof value === "string" && containsToken(haystack, value))
