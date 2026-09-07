@@ -13,3 +13,5 @@ Task 5: complete (commits 14a2e52..dfa8319, review approved; per-attempt attribu
 Task 6: complete (commits 1016312..a1d5094, review approved; same-tool basics pair added for discrimination, failure stacks, 60 tests)
 Task 7: complete (commits 0d27ce8..c7ef75c, review approved after fix; structural paired-rate guard verified red against separable column, 66 tests)
   Minor carried: Math.round in percent() could render a sub-0.5% rate as 0%; not live at current denominators (2-4 per class), revisit past ~200
+Task 8: complete (commits 28dbed1..c5af621, review approved after fix; hardened entry guard, exit-code contract covered, 70 tests)
+  bench verified: vercel-ai 7.0.93 -> basics 0%/0%, argument-scoping 0%/0%
