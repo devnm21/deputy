@@ -706,9 +706,25 @@ export function payloadCovers(
 	const found = fields.filter((field) => {
 		const value = args[field];
 		if (value === undefined) return false;
-		return haystack.includes(JSON.stringify(value));
+		return containsToken(haystack, JSON.stringify(value));
 	});
 	return found.length / fields.length;
+}
+
+const ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Substring search bounded so a value cannot match inside a larger token: a
+ * decision-critical amount of 5 must not be satisfied by a payload containing
+ * 5000. Plain inclusion would inflate the informativeness score.
+ *
+ * Still substring-based rather than structural, because adapters legitimately
+ * nest arguments inside a JSON string — the Claude adapter carries them in a
+ * file's content — so the value is not always a discrete payload node.
+ */
+function containsToken(haystack: string, needle: string): boolean {
+	const pattern = new RegExp(`(?<![\\w.])${needle.replace(ESCAPE, "\\$&")}(?![\\w.])`);
+	return pattern.test(haystack);
 }
 
 const rate = (numerator: number, denominator: number): number =>
