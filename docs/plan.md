@@ -13,6 +13,7 @@
 - Node `>=22.13.0`. ESM only (`"type": "module"`).
 - **Two `ai` versions are required and must be installed under npm aliases.** The Vercel adapter needs `MockLanguageModelV4` from `ai@7`; Mastra 1.64 bundles the `LanguageModelV2` provider generation and needs `MockLanguageModelV2` from `ai@5`. Install `"ai": "^7.0.93"` and `"ai-v5": "npm:ai@5.0.253"`. The Mastra adapter imports from `ai-v5/test`, never from `ai/test`.
 - Pin all three framework versions exactly (no `^`). The Claude adapter depends on an SSE wire format documented as an open list that grows per release.
+- **zod must be `^4.1.8`.** It is the only range satisfying all four dependents: `@anthropic-ai/claude-agent-sdk` requires `^4.0.0`, `@mastra/core` accepts `^3.25.0 || ^4.0.0`, and both `ai` versions accept `^3.25.76 || ^4.1.8`. `npm install` must succeed without `--legacy-peer-deps`; needing that flag means the tree is inconsistent and two zod copies can break `instanceof` checks inside the frameworks' schema handling.
 - Execution is detected **only** via the tool-body tripwire. Never infer execution from `toolResults`, `staticToolResults`, or any framework result field.
 - Every scripted model script must terminate with a text step, or the agent loops to its step ceiling.
 - No network egress in Tier 1. No API keys required to run `npm test`.
@@ -77,7 +78,7 @@ consumer in Task 2.
     "@mastra/core": "1.64.0",
     "ai": "7.0.93",
     "ai-v5": "npm:ai@5.0.253",
-    "zod": "^3.24.1"
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
