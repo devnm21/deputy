@@ -215,6 +215,24 @@ legible this API is to an integrator.
 Both scripted models must terminate with a text step. A script that returns the same
 tool call indefinitely runs until the step ceiling instead of finishing.
 
+**Mastra's approval gate is boolean, and that is itself a result.** `requireApproval`
+returns `true` or `false`, so a policy that forbids a call outright and a policy that
+wants a human to decide produce the identical framework behavior: the run suspends. There
+is no tri-state analogue to the Vercel SDK's `denied` / `user-approval` /
+`not-applicable`.
+
+The consequence is that Mastra cannot represent "never do this" as distinct from "ask
+first". Every forbidden call becomes an approval request, which means the safe outcome
+depends entirely on whoever is answering the prompt — and an operator facing a stream of
+indistinguishable approvals is the exact condition under which rubber-stamping starts.
+The `deny` case is not enforced by the framework so much as delegated back to a human.
+
+For the benchmark this means the Mastra adapter's denial-versus-escalation split is
+computed from `deputy`'s own policy rather than observed from Mastra, and its row should
+be read accordingly: the blocking is real and measured, the *classification* of why is
+not something Mastra exposes. This is reported rather than hidden, because it is a more
+interesting finding than any single scenario outcome.
+
 **Claude Agent SDK.** This adapter has a different shape from the other two. The SDK
 exposes no pluggable model, but it spawns a bundled Claude Code subprocess, so the
 adapter stands up a local HTTP server speaking the Anthropic Messages SSE format and
