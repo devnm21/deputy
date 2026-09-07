@@ -42,16 +42,35 @@ function schemaFor(spec: ToolSpec) {
 	return z.object(shape);
 }
 
-/** Group attempts into steps. Attempts sharing a step index are emitted together. */
+/**
+ * Group attempts into steps. Attempts sharing a step index are emitted together
+ * in one model response; attempts without a step each get their own step.
+ *
+ * Source order is preserved. Keying ungrouped attempts by a synthetic negative
+ * index and sorting would emit them in reverse, which is harmless while
+ * attribution matches on arguments but wrong for any order-sensitive scenario.
+ */
 function groupIntoSteps(attempts: Attempt[]): Array<Array<{ index: number; attempt: Attempt }>> {
-	const groups = new Map<number, Array<{ index: number; attempt: Attempt }>>();
+	const groups: Array<Array<{ index: number; attempt: Attempt }>> = [];
+	const byStep = new Map<number, Array<{ index: number; attempt: Attempt }>>();
+
 	attempts.forEach((attempt, index) => {
-		const key = attempt.step ?? -1 - index;
-		const group = groups.get(key) ?? [];
-		group.push({ index, attempt });
-		groups.set(key, group);
+		const entry = { index, attempt };
+		if (attempt.step === undefined) {
+			groups.push([entry]);
+			return;
+		}
+		const existing = byStep.get(attempt.step);
+		if (existing) {
+			existing.push(entry);
+			return;
+		}
+		const group = [entry];
+		byStep.set(attempt.step, group);
+		groups.push(group);
 	});
-	return [...groups.entries()].sort(([a], [b]) => a - b).map(([, group]) => group);
+
+	return groups;
 }
 
 export function createVercelAiAdapter(): Adapter {

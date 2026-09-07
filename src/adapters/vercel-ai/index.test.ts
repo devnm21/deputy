@@ -134,4 +134,61 @@ describe("vercel-ai adapter", () => {
 	it("declares argument predicates as expressible", () => {
 		expect(adapter.capabilities.argumentPredicates).toBe(true);
 	});
+
+	it("preserves source order for ungrouped attempts on different tools", async () => {
+		const scenario: Scenario = {
+			id: "step-order-ungrouped",
+			class: "basics",
+			description: "ungrouped attempts are scripted in source order",
+			tools: [
+				{ id: "alpha", description: "first tool", fields: [{ name: "id", type: "string" }] },
+				{ id: "beta", description: "second tool", fields: [{ name: "id", type: "string" }] },
+			],
+			policy: [],
+			attempts: [
+				{ toolId: "alpha", args: { id: "first" }, expect: "executed" },
+				{ toolId: "beta", args: { id: "second" }, expect: "executed" },
+			],
+		};
+		const observations = await adapter.run(scenario);
+		expect(observations).toHaveLength(2);
+		expect(observations.map((o) => o.toolId)).toEqual(["alpha", "beta"]);
+		expect(observations.map((o) => o.observed)).toEqual(["executed", "executed"]);
+	});
+
+	it("marks observations inexpressible when policy carries an actor-deny rule", async () => {
+		const scenario: Scenario = {
+			id: "inexpressible-actor-deny-policy",
+			class: "delegation",
+			description: "actor-deny rules cannot be expressed in this adapter",
+			tools: [
+				{
+					id: "delete_records",
+					description: "delete records in bulk",
+					fields: [{ name: "table", type: "string" }],
+				},
+			],
+			policy: [{ kind: "actor-deny", actor: "child", toolId: "delete_records" }],
+			attempts: [{ toolId: "delete_records", args: { table: "customers" }, expect: "executed" }],
+		};
+		const [observation] = await adapter.run(scenario);
+		expect(observation?.observed).toBe("executed");
+		expect(observation?.inexpressible).toBe(true);
+	});
+
+	it("marks observations expressible when no actor is involved", async () => {
+		const scenario: Scenario = {
+			id: "expressible-no-actor",
+			class: "basics",
+			description: "a scenario with no actor rules is fully expressible",
+			tools: [
+				{ id: "read", description: "read a record", fields: [{ name: "id", type: "string" }] },
+			],
+			policy: [],
+			attempts: [{ toolId: "read", args: { id: "42" }, expect: "executed" }],
+		};
+		const [observation] = await adapter.run(scenario);
+		expect(observation?.observed).toBe("executed");
+		expect(observation?.inexpressible).toBe(false);
+	});
 });
