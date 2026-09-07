@@ -44,6 +44,42 @@ describe("attributeExecutions", () => {
 		expect(attributeExecutions(attempts, entriesWithChild)).toEqual([true]);
 	});
 
+	it("matches args regardless of key order", () => {
+		const attempts: Attempt[] = [
+			{ toolId: "refund", args: { customer: "c-1", amount: 50 }, expect: "executed" },
+		];
+		const entries: LedgerEntry[] = [{ toolId: "refund", args: { amount: 50, customer: "c-1" } }];
+
+		expect(attributeExecutions(attempts, entries)).toEqual([true]);
+	});
+
+	it("does not match genuinely different values", () => {
+		const attempts: Attempt[] = [{ toolId: "refund", args: { amount: 50 }, expect: "executed" }];
+		const entries: LedgerEntry[] = [{ toolId: "refund", args: { amount: 999 } }];
+
+		expect(attributeExecutions(attempts, entries)).toEqual([false]);
+	});
+
+	it("matches nested objects with differing key order", () => {
+		const attempts: Attempt[] = [
+			{
+				toolId: "update",
+				args: { data: { b: 2, a: 1 } },
+				expect: "executed",
+			},
+		];
+		const entries: LedgerEntry[] = [{ toolId: "update", args: { data: { a: 1, b: 2 } } }];
+
+		expect(attributeExecutions(attempts, entries)).toEqual([true]);
+	});
+
+	it("treats arrays in different order as unequal", () => {
+		const attempts: Attempt[] = [{ toolId: "batch", args: { ids: [1, 2, 3] }, expect: "executed" }];
+		const entries: LedgerEntry[] = [{ toolId: "batch", args: { ids: [3, 2, 1] } }];
+
+		expect(attributeExecutions(attempts, entries)).toEqual([false]);
+	});
+
 	it("preserves attempt order in the returned array", () => {
 		const attempts: Attempt[] = [
 			{ toolId: "read", args: { id: "1" }, expect: "executed" },

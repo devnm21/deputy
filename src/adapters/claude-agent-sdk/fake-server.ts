@@ -1,8 +1,17 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
+export type ToolUseBlock = { id: string; name: string; input: unknown };
+
 export type ScriptTurn =
-	| { type: "tool_use"; id: string; name: string; input: unknown }
+	| { type: "tool_use"; id: string; name: string; input: unknown; blocks?: undefined }
+	| {
+			type: "tool_use";
+			blocks: ToolUseBlock[];
+			id?: undefined;
+			name?: undefined;
+			input?: undefined;
+	  }
 	| { type: "text"; text: string };
 
 export type FakeServer = {
@@ -13,6 +22,22 @@ export type FakeServer = {
 
 const frame = (event: string, data: unknown): string =>
 	`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+function toolUseBlockFrames(block: ToolUseBlock, index: number): string {
+	return (
+		frame("content_block_start", {
+			type: "content_block_start",
+			index,
+			content_block: { type: "tool_use", id: block.id, name: block.name, input: {} },
+		}) +
+		frame("content_block_delta", {
+			type: "content_block_delta",
+			index,
+			delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) },
+		}) +
+		frame("content_block_stop", { type: "content_block_stop", index })
+	);
+}
 
 function framesFor(turn: ScriptTurn): string {
 	const start = frame("message_start", {
@@ -29,32 +54,30 @@ function framesFor(turn: ScriptTurn): string {
 		},
 	});
 
-	const body =
-		turn.type === "tool_use"
-			? frame("content_block_start", {
-					type: "content_block_start",
-					index: 0,
-					content_block: { type: "tool_use", id: turn.id, name: turn.name, input: {} },
-				}) +
-				frame("content_block_delta", {
-					type: "content_block_delta",
-					index: 0,
-					delta: { type: "input_json_delta", partial_json: JSON.stringify(turn.input) },
-				}) +
-				frame("content_block_stop", { type: "content_block_stop", index: 0 })
-			: frame("content_block_start", {
-					type: "content_block_start",
-					index: 0,
-					content_block: { type: "text", text: "" },
-				}) +
-				frame("content_block_delta", {
-					type: "content_block_delta",
-					index: 0,
-					delta: { type: "text_delta", text: turn.text },
-				}) +
-				frame("content_block_stop", { type: "content_block_stop", index: 0 });
+	let body: string;
+	let stop: string;
 
-	const stop = turn.type === "tool_use" ? "tool_use" : "end_turn";
+	if (turn.type === "tool_use") {
+		const blocks: ToolUseBlock[] = turn.blocks ?? [
+			{ id: turn.id as string, name: turn.name as string, input: turn.input },
+		];
+		body = blocks.map((block, i) => toolUseBlockFrames(block, i)).join("");
+		stop = "tool_use";
+	} else {
+		body =
+			frame("content_block_start", {
+				type: "content_block_start",
+				index: 0,
+				content_block: { type: "text", text: "" },
+			}) +
+			frame("content_block_delta", {
+				type: "content_block_delta",
+				index: 0,
+				delta: { type: "text_delta", text: turn.text },
+			}) +
+			frame("content_block_stop", { type: "content_block_stop", index: 0 });
+		stop = "end_turn";
+	}
 
 	return (
 		start +

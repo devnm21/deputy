@@ -63,6 +63,38 @@ describe("claude-agent-sdk adapter", () => {
 		expect(JSON.stringify(observation?.escalationPayload)).toContain("5000");
 	});
 
+	it("matches two identical-argument escalations by toolUseID, not stringified args", async () => {
+		const scenario: Scenario = {
+			id: "escalation-identical-args",
+			class: "escalation",
+			description: "two approval-required calls with the same tool and identical arguments",
+			tools: [
+				{
+					id: "refund",
+					description: "issue a refund",
+					fields: [{ name: "amount", type: "number" }],
+				},
+			],
+			policy: [{ kind: "require-approval", toolId: "refund" }],
+			attempts: [
+				{
+					toolId: "refund",
+					args: { amount: 5000 },
+					expect: "escalated",
+					decisionCriticalFields: ["amount"],
+				},
+				{
+					toolId: "refund",
+					args: { amount: 5000 },
+					expect: "escalated",
+					decisionCriticalFields: ["amount"],
+				},
+			],
+		};
+		const observations = await adapter.run(scenario);
+		expect(observations.map((o) => o.observed)).toEqual(["escalated", "escalated"]);
+	});
+
 	it("attributes executions per attempt when one tool is called twice", async () => {
 		// Asking the ledger only whether `issue_refund` ran would credit the
 		// over-cap attempt with the permitted attempt's execution.

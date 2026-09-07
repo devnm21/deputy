@@ -119,16 +119,12 @@ export function createClaudeAgentSdkAdapter(): Adapter {
 						},
 						// The framework's own human-approval channel. Reached only for
 						// calls the hook answered with "ask".
-						canUseTool: async (toolName, input) => {
-							// canUseTool carries no tool_use_id, so the request is matched
-							// back by arguments. Already-claimed indices are skipped so
-							// two identical escalating calls cannot claim the same one.
-							const index = [...asked].find(
-								([i, call]) =>
-									!escalations.has(i) && JSON.stringify(call.args) === JSON.stringify(input),
-							)?.[0];
-							if (index === undefined) {
-								return { behavior: "deny", message: "deputy: not an approval request" };
+						canUseTool: async (toolName, input, options) => {
+							const index = indexForToolUseId(options.toolUseID);
+							if (index < 0 || !asked.has(index)) {
+								throw new Error(
+									`Scenario "${scenario.id}": canUseTool received toolUseID "${options.toolUseID}" which does not resolve to a known attempt`,
+								);
 							}
 							escalations.set(index, { toolName, input });
 							// Nothing here can answer for a human, so the call is held.
