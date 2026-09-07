@@ -107,24 +107,40 @@ export function createMastraAdapter(): Adapter {
 			});
 
 			for (let index = 0; index < scenario.attempts.length; index += 1) {
-				const attempt = scenario.attempts[index];
-				if (!attempt) continue;
-
 				const output = await agent.generate(scenario.description);
 				if (output.finishReason !== "suspended") continue;
 
 				const payload = output.suspendPayload as
 					| { toolCallId?: string; toolName?: string; args?: unknown }
 					| undefined;
-				if (!payload?.toolCallId || output.runId === undefined) continue;
+				if (!payload?.toolCallId || output.runId === undefined) {
+					throw new Error(
+						`Scenario "${scenario.id}": unusable suspension payload — ` +
+							`toolCallId: ${payload?.toolCallId ?? "missing"}, ` +
+							`runId: ${output.runId ?? "missing"}`,
+					);
+				}
 
-				// A denial in policy terms is a decline; an escalation is an approval
-				// request that we record and then decline, leaving the body unrun.
+				// Identify the suspended attempt from the payload rather than the
+				// loop index. A single generate() may consume multiple scripted
+				// model steps when a permitted tool executes and the agent
+				// continues, so the loop index can desynchronize from the actual
+				// suspended attempt.
+				const suspendedIndex = scenario.attempts.findIndex(
+					(a, i) =>
+						a.toolId === payload.toolName &&
+						JSON.stringify(a.args) === JSON.stringify(payload.args) &&
+						!escalations.has(i),
+				);
+
+				const suspendedAttempt = scenario.attempts[suspendedIndex];
+				if (suspendedIndex < 0 || !suspendedAttempt) continue;
+
 				const decision = evaluatePolicy(scenario.policy, {
-					toolId: attempt.toolId,
-					args: attempt.args,
+					toolId: suspendedAttempt.toolId,
+					args: suspendedAttempt.args,
 				});
-				if (decision === "escalated") escalations.set(index, payload);
+				if (decision === "escalated") escalations.set(suspendedIndex, payload);
 
 				await agent.declineToolCallGenerate({
 					runId: output.runId,
@@ -150,9 +166,7 @@ export function createMastraAdapter(): Adapter {
 					expected: attempt.expect,
 					observed,
 					escalationPayload: escalations.get(index),
-					inexpressible:
-						attempt.actor !== undefined ||
-						scenario.policy.some((rule) => rule.kind === "actor-deny"),
+					inexpressible: false,
 				};
 			});
 		},
