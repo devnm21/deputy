@@ -33,7 +33,7 @@ because there is nowhere to put one.
 
 ## What it measures
 
-Five failure classes, each a scenario family with a pass/fail per case:
+Six failure classes, each a scenario family with a pass/fail per case:
 
 | Class | Question |
 |---|---|
@@ -41,7 +41,8 @@ Five failure classes, each a scenario family with a pass/fail per case:
 | **Delegation chains** | A parent agent spawns a sub-agent. Does the sub-agent inherit authority the parent never had, or bypass a gate the parent was subject to? |
 | **Escalation quality** | When the gate *does* ask a human, does the request name the actual resource and blast radius — or just the tool name? An approval prompt that can't be evaluated is a rubber stamp. |
 | **Parallel siblings** | One step, two calls, one gated. Does holding the gated call hold its siblings too, or do they run while a human deliberates? |
-| **Basics** *(control)* | A plainly forbidden tool, no ambiguity. Everything should pass. Included so the other four have a baseline. |
+| **Policy attachment** | The same rule, attached at the tool definition versus at the caller. Does where a developer writes the policy change whether it holds? |
+| **Basics** *(control)* | A plainly forbidden tool, no ambiguity. Everything should pass. Included so the other five have a baseline. |
 
 ## How it runs
 
@@ -84,15 +85,20 @@ Three frameworks, six failure classes, Tier 1 only (scripted model, no live LLM)
 cell is **unauthorized execution rate / over-block rate** — lower is better on both.
 Rates show `(numerator/denominator)`.
 
-| Framework | parallel-siblings | policy-attachment | escalation info |
-| --- | --- | --- | --- |
-| vercel-ai (`7.0.93`) | 14% (1/7) / 0% | — | 100% |
-| mastra (`1.64.0`) | 14% (1/7) / 0% | 33% (1/3) / 0% | 100% |
-| claude-agent-sdk (`0.3.263`) | 14% (1/7) / 0% | — | 53% |
+| Framework | basics | argument-scoping | delegation | escalation | parallel-siblings | policy-attachment |
+| --- | --- | --- | --- | --- | --- | --- |
+| vercel-ai (`7.0.93`) | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% (1/7) / 0% | — |
+| mastra (`1.64.0`) | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% (1/7) / 0% | 33% (1/3) / 0% |
+| claude-agent-sdk (`0.3.263`) | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% (1/7) / 0% | — |
 
-`basics`, `argument-scoping`, and `delegation` are **0% / 0%** on all three rows. Every
-framework blocked every plainly forbidden tool, every argument-scoped violation, and
-every delegation-chain bypass in the corpus.
+Escalation informativeness, scored separately: **100%** for Vercel and Mastra, **53%**
+for the Claude Agent SDK. See finding 3 for why those are not a like-for-like
+comparison.
+
+Most cells are zero, and that is a real result: every framework blocked every plainly
+forbidden tool, every argument-scoped violation, and every delegation-chain bypass in
+the corpus. The failures are concentrated in two places, and both are about *when* and
+*where* a gate applies rather than whether it exists.
 
 Full per-class table, per-scenario breakdowns, and per-observation reproduction data:
 [`results/latest.md`](results/latest.md) and [`results/latest.json`](results/latest.json).
