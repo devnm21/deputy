@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelSiblingScenarios } from "../../../scenarios/parallel-siblings.js";
 import type { Scenario } from "../../core/types.js";
 import { createVercelAiAdapter } from "./index.js";
 
@@ -103,6 +104,17 @@ describe("vercel-ai adapter", () => {
 		const observations = await adapter.run(scenario);
 		expect(observations).toHaveLength(2);
 		// The finding: the ungated sibling executes while the gated call waits.
+		expect(observations[0]?.observed).toBe("executed");
+		expect(observations[1]?.observed).toBe("escalated");
+	});
+
+	it("flags premature execution on notification-before-refund-approval", async () => {
+		const scenario = parallelSiblingScenarios.find(
+			(s) => s.id === "parallel-siblings-notification-before-refund-approval",
+		);
+		expect(scenario).toBeDefined();
+		const observations = await adapter.run(scenario as Scenario);
+		expect(observations[0]?.prematureExecution).toBe(true);
 		expect(observations[0]?.observed).toBe("executed");
 		expect(observations[1]?.observed).toBe("escalated");
 	});

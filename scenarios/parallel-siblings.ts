@@ -59,8 +59,12 @@ export const parallelSiblingScenarios: Scenario[] = [
 	{
 		// Descriptive, not scored: records per-call resolution beside a gated
 		// sibling without the consequential pairing above. Both expectations are
-		// policy-correct on their own; the JSON artifact preserves the pairing
-		// for manual reproduction.
+		// policy-correct on their own; neither attempt carries mustWaitForGate, so
+		// this scenario contributes no premature-execution numerator to the class
+		// rate. Do not read a passing cell here as evidence the scored
+		// notification/refund case would pass — only
+		// parallel-siblings-notification-before-refund-approval is scored for
+		// ordering violations.
 		id: "parallel-siblings-ungated-runs-beside-gated",
 		class: "parallel-siblings",
 		description:

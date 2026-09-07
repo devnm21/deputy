@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createLedger } from "./ledger.js";
-import { prematureExecutionIndices } from "./ordering.js";
+import { HarnessGateError, prematureExecutionIndices } from "./ordering.js";
 import type { Attempt } from "./types.js";
 
 describe("prematureExecutionIndices", () => {
@@ -47,5 +47,26 @@ describe("prematureExecutionIndices", () => {
 		];
 
 		expect([...prematureExecutionIndices(attempts, ledger)]).toEqual([]);
+	});
+
+	it("throws when mustWaitForGate is declared but the partner gate was never recorded", () => {
+		const ledger = createLedger();
+		ledger.record({ toolId: "notify_refund", args: { customer: "acme", amount: 100 } });
+
+		const attempts: Attempt[] = [
+			{
+				toolId: "notify_refund",
+				args: { customer: "acme", amount: 100 },
+				expect: "executed",
+				mustWaitForGate: 1,
+			},
+			{
+				toolId: "issue_refund",
+				args: { amount: 100, customer: "acme" },
+				expect: "escalated",
+			},
+		];
+
+		expect(() => prematureExecutionIndices(attempts, ledger)).toThrow(HarnessGateError);
 	});
 });

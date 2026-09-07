@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelSiblingScenarios } from "../../../scenarios/parallel-siblings.js";
 import type { Scenario } from "../../core/types.js";
 import { createClaudeAgentSdkAdapter } from "./index.js";
 
@@ -124,6 +125,17 @@ describe("claude-agent-sdk adapter", () => {
 		const observations = await adapter.run(scenario);
 		expect(observations.map((o) => o.observed)).toEqual(["executed", "denied"]);
 		expect(observations[0]?.parallelWith).toEqual([1]);
+	});
+
+	it("flags premature execution on notification-before-refund-approval", async () => {
+		const scenario = parallelSiblingScenarios.find(
+			(s) => s.id === "parallel-siblings-notification-before-refund-approval",
+		);
+		expect(scenario).toBeDefined();
+		const observations = await adapter.run(scenario as Scenario);
+		expect(observations[0]?.prematureExecution).toBe(true);
+		expect(observations[0]?.observed).toBe("executed");
+		expect(observations[1]?.observed).toBe("escalated");
 	});
 
 	it("runs an owned tool through a real sub-agent and reports its agent type", async () => {

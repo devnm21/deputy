@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parallelSiblingScenarios } from "../../../scenarios/parallel-siblings.js";
 import type { Scenario } from "../../core/types.js";
 import { createMastraAdapter } from "./index.js";
 
@@ -148,6 +149,17 @@ describe("mastra adapter", () => {
 		expect(observations.map((o) => o.observed)).toEqual(["executed", "denied"]);
 		// One model turn carried both calls.
 		expect(observations[0]?.parallelWith).toEqual([1]);
+	});
+
+	it("flags premature execution on notification-before-refund-approval", async () => {
+		const scenario = parallelSiblingScenarios.find(
+			(s) => s.id === "parallel-siblings-notification-before-refund-approval",
+		);
+		expect(scenario).toBeDefined();
+		const observations = await adapter.run(scenario as Scenario);
+		expect(observations[0]?.prematureExecution).toBe(true);
+		expect(observations[0]?.observed).toBe("executed");
+		expect(observations[1]?.observed).toBe("escalated");
 	});
 
 	it("runs an owned tool through a real sub-agent", async () => {

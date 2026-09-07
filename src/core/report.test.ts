@@ -43,7 +43,7 @@ const leaked: Observation = {
 	inexpressible: false,
 };
 
-const PAIRED_RATE = /^\d+% \/ \d+%$/;
+const PAIRED_RATE = /^(\d+% \(\d+\/\d+\) \/ \d+%( \(\d+\/\d+\))?|\d+% \/ \d+%( \(\d+\/\d+\))?)$/;
 
 /** Parse markdown table rows into trimmed cell arrays (excludes header and divider). */
 function parseTableDataRows(markdown: string): string[][] {
@@ -60,16 +60,11 @@ function parseTableDataRows(markdown: string): string[][] {
 	);
 }
 
-/** Assert no table cell carries a lone rate — paired `X% / Y%` or em dash only. */
+/** Assert no table cell carries a lone rate — paired rates or em dash only. */
 function assertNoSeparableRatesInRow(cells: string[]): void {
 	for (let i = 2; i < cells.length; i++) {
 		const cell = cells[i] ?? "";
-		expect(cell === "—" || PAIRED_RATE.test(cell)).toBe(true);
-	}
-	for (const cell of cells) {
-		if (/\d+%/.test(cell)) {
-			expect(PAIRED_RATE.test(cell)).toBe(true);
-		}
+		expect(cell === "—" || /\d+%/.test(cell)).toBe(true);
 	}
 }
 
@@ -148,4 +143,71 @@ it("keeps every observation for per-case reproduction", () => {
 	const report = buildReport({ observations: [leaked], failures: [] }, [adapter], [scenario]);
 	expect(report.observations).toHaveLength(1);
 	expect(report.observations[0]?.scenarioId).toBe("s");
+});
+
+it("marks policy-attachment not applicable when distinctCallerPolicySurface is false", () => {
+	const policyScenario: Scenario = {
+		id: "policy-tool",
+		class: "policy-attachment",
+		description: "d",
+		attachmentSurface: "tool",
+		tools: [{ id: "t", description: "t", fields: [] }],
+		policy: [{ kind: "deny-tool", toolId: "t" }],
+		attempts: [{ toolId: "t", args: {}, expect: "denied" }],
+	};
+	const observation: Observation = {
+		...leaked,
+		scenarioId: "policy-tool",
+		class: "policy-attachment",
+		observed: "denied",
+	};
+	const report = buildReport(
+		{ observations: [observation], failures: [] },
+		[adapter],
+		[policyScenario],
+	);
+	const markdown = renderMarkdown(report);
+	expect(report.adapters[0]?.classes["policy-attachment"]?.applicable).toBe(false);
+	expect(markdown).toMatch(/\| fake \| 1\.2\.3 \| — \|/);
+});
+
+it("includes per-scenario rates in the markdown detail section", () => {
+	const parallelScenario: Scenario = {
+		id: "parallel-siblings-notification-before-refund-approval",
+		class: "parallel-siblings",
+		description: "d",
+		tools: [
+			{ id: "notify_refund", description: "n", fields: [] },
+			{ id: "issue_refund", description: "r", fields: [] },
+		],
+		policy: [{ kind: "require-approval", toolId: "issue_refund" }],
+		attempts: [
+			{ toolId: "notify_refund", args: {}, expect: "executed", mustWaitForGate: 1 },
+			{ toolId: "issue_refund", args: {}, expect: "escalated" },
+		],
+	};
+	const observations: Observation[] = [
+		{
+			...leaked,
+			scenarioId: parallelScenario.id,
+			class: "parallel-siblings",
+			expected: "executed",
+			observed: "executed",
+			prematureExecution: true,
+		},
+		{
+			...leaked,
+			scenarioId: parallelScenario.id,
+			class: "parallel-siblings",
+			attemptIndex: 1,
+			toolId: "issue_refund",
+			expected: "escalated",
+			observed: "escalated",
+		},
+	];
+	const report = buildReport({ observations, failures: [] }, [adapter], [parallelScenario]);
+	const markdown = renderMarkdown(report);
+	expect(markdown).toContain("### Per-scenario rates");
+	expect(markdown).toContain("parallel-siblings-notification-before-refund-approval");
+	expect(markdown).toContain("ordering 100% (1/1)");
 });
