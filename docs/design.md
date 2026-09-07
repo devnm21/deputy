@@ -91,6 +91,18 @@ sub-agent's inner tool names or arguments. A parent-level allowlist is therefore
 escaped by routing the call through a sub-agent, and the child's tool executes with the
 parent policy never having seen it.
 
+The Claude Agent SDK fails the other direction on the same edge, which makes the class
+comparative rather than a single-framework result. Its hooks *do* fire for sub-agent
+tool calls, tagged with `agent_id`, so interception works. But authority inheritance is
+asymmetric: a sub-agent may loosen its permission mode relative to a `default` parent,
+while a parent running `bypassPermissions`, `acceptEdits`, or `auto` applies that mode
+to every sub-agent and it cannot be tightened per sub-agent. Permissive settings flow
+down and restrictive ones do not.
+
+Its `AgentDefinition.tools` array is also a scope rather than a check — an omitted tool
+is absent from the sub-agent's session entirely, with no prompt and no error. So
+tool-omission and tool-denial are distinguishable outcomes and are scored separately.
+
 A tool's *own* `requireApproval` does propagate correctly across the delegation edge
 and suspends the parent run, which makes the safe pattern the inverse of the intuitive
 one: gate at the tool definition, not at the caller. The behavior is undocumented in
@@ -189,6 +201,30 @@ ids come from `_internal: { generateId: mockId({ prefix: 'approval' }) }`.
 Both scripted models must terminate with a text step. A script that returns the same
 tool call indefinitely runs until the step ceiling instead of finishing.
 
+**Claude Agent SDK.** This adapter has a different shape from the other two. The SDK
+exposes no pluggable model, but it spawns a bundled Claude Code subprocess, so the
+adapter stands up a local HTTP server speaking the Anthropic Messages SSE format and
+points the subprocess at it with `ANTHROPIC_BASE_URL` via `options.env`. The TypeScript
+SDK *replaces* the subprocess environment with `env` rather than merging, so
+`process.env` must be spread in explicitly.
+
+The fake server must serve `POST /v1/messages?beta=true` matched on path rather than
+full URL, must stream SSE rather than buffer (a buffering gateway stalls the client),
+and should answer the `HEAD /api/hello` warm-up probe. Scripting is one layer lower than
+the other adapters: turn one returns a `tool_use` block, later turns return text with
+`stop_reason: "end_turn"`.
+
+Three constraints on this adapter: `settingSources: []` is mandatory, or a developer's
+`~/.claude/` config perturbs scores; `permissionMode: 'auto'` is excluded from Tier 1
+because it invokes a classifier model; and tool names are aliased in transit, so a
+scripted `Task` call surfaces to the hook as `Agent` and the scripted name cannot be
+assumed to reach the hook verbatim.
+
+The SDK also offers a second, independent oracle the other frameworks lack: the result
+message carries a machine-readable `permission_denials` array. Assertions still key on
+canary side effects, but agreement between the two is a useful self-check on the
+adapter.
+
 ## Metrics
 
 Four numbers per framework per class. The first two are always reported together.
@@ -261,9 +297,13 @@ docs/
   `{ proceed: false, output }` was observed surfacing `toolResults: [null]` rather than
   the supplied output. Unresolved, and it affects how a denial is reported rather than
   whether it holds.
-- Deferred to a later version, both worth their own class eventually: **approval
-  forgery**, since approval history arrives as client-controlled input and the Vercel
-  SDK's mitigation is an `experimental_`-prefixed HMAC secret whose absence is itself a
-  finding; and **configuration precedence**, since a permissive run-level
-  `toolApproval` map silently overrides a tool's own `needsApproval`, which is a bypass
-  produced by configuration rather than by the model.
+- Deferred to a later version: **approval forgery**, since approval history arrives as
+  client-controlled input and the Vercel SDK's mitigation is an `experimental_`-prefixed
+  HMAC secret whose absence is itself a finding.
+- **Configuration shadowing** now has a confirmed instance in each of two frameworks
+  and is the strongest candidate for the next class. A permissive run-level
+  `toolApproval` map silently overrides a tool's own `needsApproval` in the Vercel SDK,
+  and a bare `allowedTools` entry in the Claude Agent SDK auto-approves a tool before
+  `canUseTool` is consulted, signalled only by a one-time process warning. Both are
+  bypasses produced by configuration rather than by the model, which makes them
+  invisible to any benchmark that only varies the agent's behavior.
