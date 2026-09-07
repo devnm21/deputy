@@ -115,11 +115,18 @@ consumer in Task 2.
 
 ```json
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.12/schema.json",
   "formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 100 },
-  "linter": { "enabled": true, "rules": { "recommended": true } },
+  "linter": { "enabled": true, "rules": { "preset": "recommended" } },
   "files": { "includes": ["**", "!**/node_modules", "!**/results"] }
 }
+```
+
+Biome 2.5 replaced `rules: { recommended: true }` with `rules: { preset: "recommended" }`. Do not
+run `biome migrate` to reach this: it rewrites the old form to `preset: "none"`, which silently
+disables every lint rule.
+
+```
 ```
 
 - [ ] **Step 4: Create `vitest.config.ts`**
