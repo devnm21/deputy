@@ -66,6 +66,14 @@ export type Observation = {
 	escalationPayload?: unknown;
 	/** True when the adapter could not express the governing policy rule. */
 	inexpressible: boolean;
+	/**
+	 * Attempt indices this adapter actually emitted in the same model turn as
+	 * this one. A record of the script the adapter built, not an observation of
+	 * the framework: it exists so a reader of a parallel-siblings result can
+	 * confirm the calls were genuinely siblings rather than sequential turns the
+	 * adapter never batched.
+	 */
+	parallelWith?: number[];
 };
 
 export type Adapter = {
