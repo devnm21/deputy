@@ -73,9 +73,24 @@ export function createVercelAiAdapter(): Adapter {
 			actorConstraints: true,
 			// The approval request carries the full parsed tool call.
 			structuredEscalationPayload: true,
+			// The SDK has `toolApproval` (per-generateText call) and tool-level
+			// `needsApproval`, but both are scoped to the immediate generateText
+			// context. There is no first-class delegation edge: nested agents are
+			// separate generateText calls the developer constructs in a tool body.
+			// Neither surface claims to span nested agents, so a developer who
+			// installs `toolApproval` only on the parent and not on a child built
+			// via Experimental_Agent has made a configuration omission, not relied
+			// on a propagation guarantee the framework offered and broke.
+			distinctCallerPolicySurface: false,
 		},
 
 		async run(scenario: Scenario): Promise<Observation[]> {
+			// This adapter has no distinct caller-level surface that spans
+			// delegation. Scenarios requesting that surface are not scored here —
+			// returning empty observations makes the table show "—" for those
+			// cells, which is honest: there is nothing to measure.
+			if (scenario.attachmentSurface === "caller") return [];
+
 			const ledger = createLedger();
 			const steps = groupIntoSteps(scenario.attempts);
 			const siblings = siblingIndex(steps);

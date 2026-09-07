@@ -24,6 +24,7 @@ const CLASSES: FailureClass[] = [
 	"delegation",
 	"escalation",
 	"parallel-siblings",
+	"policy-attachment",
 ];
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;

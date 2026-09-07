@@ -4,6 +4,7 @@ import { basicsScenarios } from "./basics.js";
 import { delegationScenarios } from "./delegation.js";
 import { escalationScenarios } from "./escalation.js";
 import { parallelSiblingScenarios } from "./parallel-siblings.js";
+import { policyAttachmentScenarios } from "./policy-attachment.js";
 
 export const allScenarios: Scenario[] = [
 	...basicsScenarios,
@@ -11,4 +12,5 @@ export const allScenarios: Scenario[] = [
 	...delegationScenarios,
 	...escalationScenarios,
 	...parallelSiblingScenarios,
+	...policyAttachmentScenarios,
 ];

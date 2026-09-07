@@ -10,7 +10,13 @@ import { attributeExecutions } from "../../core/attribute.js";
 import { createLedger } from "../../core/ledger.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import { groupIntoSteps, type StepEntry, siblingIndex } from "../../core/steps.js";
-import type { Adapter, Observation, Scenario, ToolSpec } from "../../core/types.js";
+import type {
+	Adapter,
+	Observation,
+	PolicyAttachmentSurface,
+	Scenario,
+	ToolSpec,
+} from "../../core/types.js";
 
 const USAGE = { inputTokens: 1, outputTokens: 1, totalTokens: 2 };
 
@@ -123,6 +129,15 @@ export function createMastraAdapter(): Adapter {
 			actorConstraints: true,
 			// suspendPayload carries toolName and args.
 			structuredEscalationPayload: true,
+			// Mastra offers two distinct surfaces:
+			// 1. Tool-level `requireApproval` on createTool — propagates across
+			//    delegation edges (the child's tool body suspends the parent run).
+			// 2. Run-level `requireToolApproval` on agent.generate() — consulted
+			//    only for the immediate agent's tool calls, NOT for a sub-agent's
+			//    inner tool calls. A developer attaching approval at the run level
+			//    and delegating gets silent execution.
+			// Documented: https://mastra.ai/docs/agents/using-tools-and-mcp#human-in-the-loop
+			distinctCallerPolicySurface: true,
 		},
 
 		async run(scenario: Scenario): Promise<Observation[]> {
@@ -130,17 +145,18 @@ export function createMastraAdapter(): Adapter {
 			const escalations = new Map<number, unknown>();
 			const steps = groupIntoSteps(scenario.attempts);
 			const siblings = siblingIndex(steps);
+			const surface: PolicyAttachmentSurface = scenario.attachmentSurface ?? "tool";
 
-			// A tool is registered on the agent that owns it, and its approval gate
-			// is evaluated with that agent as the actor.
+			// A tool is registered on the agent that owns it. When the attachment
+			// surface is "tool", the approval gate is the tool's own
+			// `requireApproval` — the mechanism that propagates across delegation
+			// edges. When the surface is "caller", the tools carry no approval
+			// gate; policy is attached to the run via `requireToolApproval` on
+			// `agent.generate()` instead.
 			//
-			// This is the only place in Mastra where a caller-scoped rule can be
-			// written. Neither approval surface reports who is calling: a tool's
-			// own `requireApproval` receives `{ requestContext, workspace }` and the
-			// run-level `requireToolApproval` receives `{ toolName, args,
-			// requestContext }`. Per-agent registration is the framework's own way
-			// to say "this agent has this tool, under these terms", and the gate is
-			// still Mastra's — the adapter never declines on the framework's behalf.
+			// For non-policy-attachment classes (surface defaults to "tool"), the
+			// existing per-tool `requireApproval` is used — identical to what every
+			// other class has always measured.
 			const toolsFor = (owner: string | undefined) =>
 				Object.fromEntries(
 					scenario.tools
@@ -152,12 +168,21 @@ export function createMastraAdapter(): Adapter {
 								description: spec.description,
 								inputSchema: schemaFor(spec),
 								outputSchema: z.object({ ok: z.boolean() }),
-								requireApproval: async (input: Record<string, unknown>) =>
-									evaluatePolicy(scenario.policy, {
-										toolId: spec.id,
-										args: input,
-										actor: owner,
-									}) !== "executed",
+								// Tool-level gate: present when attaching at the tool
+								// definition, absent when attaching at the caller level.
+								// On the caller surface the tool body is ungated and
+								// execution depends entirely on the run-level
+								// `requireToolApproval`.
+								...(surface === "tool"
+									? {
+											requireApproval: async (input: Record<string, unknown>) =>
+												evaluatePolicy(scenario.policy, {
+													toolId: spec.id,
+													args: input,
+													actor: owner,
+												}) !== "executed",
+										}
+									: {}),
 								execute: async (input: Record<string, unknown>, options?: unknown) => {
 									// The actor comes from Mastra's own execution context
 									// (`options.agent.agentId`), not from the scenario, so an
@@ -173,6 +198,24 @@ export function createMastraAdapter(): Adapter {
 							}),
 						]),
 				);
+
+			// Run-level approval gate, used only when attachmentSurface is "caller".
+			// This is Mastra's `requireToolApproval` option on `agent.generate()`:
+			// a function receiving { toolName, args, requestContext } and returning
+			// true (suspend for approval) or false (allow).
+			//
+			// Verified: this gate is consulted only for the immediate agent's own
+			// tool calls. For a delegating parent, it sees the auto-generated
+			// `agent-<key>` delegation tool (for which no policy rule applies →
+			// allowed) and never the sub-agent's inner tools. A developer who
+			// attaches approval here and delegates gets silent execution.
+			const callerLevelGate = async (ctx: { toolName: string; args: Record<string, unknown> }) => {
+				const decision = evaluatePolicy(scenario.policy, {
+					toolId: ctx.toolName,
+					args: ctx.args,
+				});
+				return decision !== "executed";
+			};
 
 			const owners = subAgentOwners(scenario);
 
@@ -225,7 +268,8 @@ export function createMastraAdapter(): Adapter {
 
 				// A step may hold more than one gated call, and each decline resumes
 				// the run only as far as the next suspension, so this drains them.
-				let output = (await agent.generate(scenario.description)) as MastraOutput;
+				const generateOpts = surface === "caller" ? { requireToolApproval: callerLevelGate } : {};
+				let output = (await agent.generate(scenario.description, generateOpts)) as MastraOutput;
 				for (let guard = 0; guard <= group.length; guard += 1) {
 					if (output.finishReason !== "suspended") break;
 

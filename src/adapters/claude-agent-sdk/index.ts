@@ -68,9 +68,28 @@ export function createClaudeAgentSdkAdapter(): Adapter {
 			// Verified: canUseTool receives the tool name and full input, and the
 			// result message's permission_denials repeats it.
 			structuredEscalationPayload: true,
+			// The SDK offers session-wide PreToolUse hooks and canUseTool as the
+			// only approval surface. There is no per-tool-definition approval
+			// mechanism. The hooks fire for all tool calls including sub-agent
+			// calls (with agent_id), so the single surface is effectively a
+			// caller-level surface that inherently spans delegation. There is no
+			// second, distinct surface to compare it against.
+			distinctCallerPolicySurface: false,
 		},
 
 		async run(scenario: Scenario): Promise<Observation[]> {
+			// The Claude Agent SDK's only approval surface is session-wide hooks
+			// (PreToolUse / canUseTool), which inherently span delegation. There
+			// is no per-tool-definition approval mechanism, so a "tool" surface
+			// request is handled identically to the default — the hooks are still
+			// the mechanism. For "caller" surface scenarios: the session-wide hooks
+			// ARE the caller surface, and they work for delegation. But since
+			// there is no second, distinct surface to compare against, the
+			// caller-surface scenarios are not scored here — the adapter offers
+			// only one surface and the class must not manufacture a finding from
+			// the absence of a second one.
+			if (scenario.attachmentSurface === "caller") return [];
+
 			const ledger = createLedger();
 			const workDir = await mkdtemp(join(tmpdir(), "deputy-claude-"));
 

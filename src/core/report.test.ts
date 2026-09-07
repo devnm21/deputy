@@ -27,6 +27,7 @@ const adapter: Adapter = {
 		argumentPredicates: true,
 		actorConstraints: false,
 		structuredEscalationPayload: true,
+		distinctCallerPolicySurface: false,
 	},
 	run: async () => [],
 };
@@ -139,6 +140,7 @@ it("carries adapter capabilities through to the adapter report", () => {
 		argumentPredicates: true,
 		actorConstraints: false,
 		structuredEscalationPayload: true,
+		distinctCallerPolicySurface: false,
 	});
 });
 

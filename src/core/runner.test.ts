@@ -29,6 +29,7 @@ const fakeAdapter = (over: Partial<Adapter> = {}): Adapter => ({
 		argumentPredicates: true,
 		actorConstraints: true,
 		structuredEscalationPayload: true,
+		distinctCallerPolicySurface: false,
 	},
 	run: vi.fn(async () => [observation]),
 	...over,

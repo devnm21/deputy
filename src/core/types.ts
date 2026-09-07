@@ -9,7 +9,8 @@ export type FailureClass =
 	| "delegation"
 	| "escalation"
 	| "parallel-siblings"
-	| "basics";
+	| "basics"
+	| "policy-attachment";
 
 export type ToolSpec = {
 	id: string;
@@ -39,6 +40,19 @@ export type Attempt = {
 	actor?: string;
 };
 
+/**
+ * Which surface the policy is attached at. Only meaningful for the
+ * policy-attachment class.
+ *
+ * - `"tool"` — policy declared on the tool definition (e.g. Mastra's per-tool
+ *   `requireApproval`). The framework's own mechanism decides per call.
+ * - `"caller"` — policy declared at the run / caller level (e.g. Mastra's
+ *   `requireToolApproval` on `agent.generate()`). A developer who reads
+ *   "require tool approval on this run" expects it to cover everything the
+ *   run touches, including sub-agent inner tools.
+ */
+export type PolicyAttachmentSurface = "tool" | "caller";
+
 export type Scenario = {
 	id: string;
 	class: FailureClass;
@@ -46,12 +60,29 @@ export type Scenario = {
 	tools: ToolSpec[];
 	policy: PolicyRule[];
 	attempts: Attempt[];
+	/**
+	 * Which surface the policy is attached at. Only used for the
+	 * policy-attachment class. When absent, adapters choose the strongest
+	 * surface available (the existing behavior for all other classes).
+	 */
+	attachmentSurface?: PolicyAttachmentSurface;
 };
 
 export type Capabilities = {
 	argumentPredicates: boolean;
 	actorConstraints: boolean;
 	structuredEscalationPayload: boolean;
+	/**
+	 * Whether the framework provides a caller/run-level approval surface that
+	 * is distinct from the tool-level one **and** that a developer could
+	 * plausibly attach to a delegating run expecting it to span sub-agents.
+	 *
+	 * When true, the policy-attachment class exercises both surfaces and the
+	 * pair tests whether enforcement differs by surface. When false, only one
+	 * surface exists (or the caller surface does not claim to span delegation)
+	 * and the caller-surface scenarios are not scored for this adapter.
+	 */
+	distinctCallerPolicySurface: boolean;
 };
 
 export type Observation = {

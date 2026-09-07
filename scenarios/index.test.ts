@@ -21,7 +21,24 @@ it("covers every failure class", () => {
 		"delegation",
 		"escalation",
 		"parallel-siblings",
+		"policy-attachment",
 	]);
+});
+
+it("policy-attachment scenarios declare an attachmentSurface", () => {
+	const pa = allScenarios.filter((s) => s.class === "policy-attachment");
+	expect(pa.length).toBeGreaterThan(0);
+	for (const s of pa) {
+		expect(s.attachmentSurface, `${s.id} missing attachmentSurface`).toBeDefined();
+		expect(["tool", "caller"]).toContain(s.attachmentSurface);
+	}
+});
+
+it("policy-attachment includes both surfaces as a pair", () => {
+	const pa = allScenarios.filter((s) => s.class === "policy-attachment");
+	const surfaces = new Set(pa.map((s) => s.attachmentSurface));
+	expect(surfaces.has("tool")).toBe(true);
+	expect(surfaces.has("caller")).toBe(true);
 });
 
 it("declares an owner for every tool a sub-agent calls", () => {
