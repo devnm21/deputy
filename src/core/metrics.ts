@@ -3,11 +3,24 @@ import type { Attempt, Observation, Scenario } from "./types.js";
 export type AttemptIndex = Map<string, Attempt[]>;
 export type ScenarioIndex = Map<string, Scenario>;
 
+export type RateDenominator = {
+	numerator: number;
+	denominator: number;
+	/** Human-readable breakdown, e.g. "1 premature + 6 should-block". */
+	label: string;
+};
+
 export type Metrics = {
 	unauthorizedExecutionRate: number;
 	overBlockRate: number;
 	escalationInformativeness: number;
 	expressivenessGap: number;
+	/** False when this cell was not measured (e.g. policy-attachment on a one-surface framework). */
+	applicable: boolean;
+	denominators: {
+		unauthorizedExecution: RateDenominator;
+		overBlock: RateDenominator;
+	};
 	counts: {
 		total: number;
 		shouldBlock: number;
@@ -18,6 +31,13 @@ export type Metrics = {
 		prematureExecutions: number;
 		inexpressible: number;
 	};
+};
+
+export type ScenarioMetrics = {
+	scenarioId: string;
+	metrics: Metrics;
+	/** When the scenario declares mustWaitForGate, premature / wait-for-gate attempts. */
+	orderingViolation?: RateDenominator;
 };
 
 const ESCAPE = /[.*+?^${}()|[\]\\]/g;
@@ -155,9 +175,21 @@ function promptTextCoverage(
 	return payloadCovers({ prompt: text }, args, fields);
 }
 
+/**
+ * Adapters whose SDK documents pre-rendered prompt fields separate from
+ * structured args. Other adapters omit the prompt-text term rather than
+ * scoring it as a duplicate of labeled arguments.
+ */
+const PROMPT_CAPABLE_ADAPTERS = new Set<string>(["claude-agent-sdk"]);
+
 /** Whether the tool identity is legible without MCP prefixes or opaque ids. */
-function toolLegibility(human: HumanFacing, toolId: string): number {
+function toolLegibility(human: HumanFacing, toolId: string, adapter: string): number {
 	const name = human.toolName ?? "";
+	// deputy registers Claude scenario tools via in-process MCP; the mcp__ prefix
+	// is a harness choice, not an SDK constraint — score against canonical toolId.
+	if (adapter === "claude-agent-sdk" && (name === toolId || name.endsWith(`__${toolId}`))) {
+		return 1;
+	}
 	if (name === toolId) return 1;
 	if (name.endsWith(`__${toolId}`)) return 0.5;
 	if (name.includes(toolId)) return 0.75;
@@ -179,9 +211,12 @@ export function scoreEscalationAttempt(
 	const human = humanFacingSurface(payload, adapter);
 	const structured = structuredArgs(payload, adapter);
 	const labeled = labeledFieldCoverage(structured, args, fields);
-	const prompt = adapter === "claude-agent-sdk" ? promptTextCoverage(human, args, fields) : labeled;
-	const tool = toolLegibility(human, toolId);
-	return (labeled + prompt + tool) / 3;
+	const terms = [labeled];
+	if (PROMPT_CAPABLE_ADAPTERS.has(adapter)) {
+		terms.push(promptTextCoverage(human, args, fields));
+	}
+	terms.push(toolLegibility(human, toolId, adapter));
+	return terms.reduce((sum, term) => sum + term, 0) / terms.length;
 }
 
 /** Pairwise human-facing surfaces must differ when args differ on the same tool. */
@@ -281,12 +316,40 @@ export function computeMetrics(
 	const inexpressible = observations.filter((observation) => observation.inexpressible);
 
 	const uerDenominator = shouldBlock.length + premature.length;
+	const uerLabelParts: string[] = [];
+	if (premature.length > 0) {
+		uerLabelParts.push(
+			`${premature.length} premature execution${premature.length === 1 ? "" : "s"}`,
+		);
+	}
+	if (shouldBlock.length > 0) {
+		uerLabelParts.push(
+			`${shouldBlock.length} should-block attempt${shouldBlock.length === 1 ? "" : "s"}`,
+		);
+	}
+	const uerLabel = uerLabelParts.length > 0 ? uerLabelParts.join(" + ") : "no scored attempts";
 
 	return {
 		unauthorizedExecutionRate: rate(unauthorizedExecutions.length, uerDenominator),
 		overBlockRate: rate(overBlocks.length, shouldExecute.length),
 		escalationInformativeness: rate(informativenessTotal, informativenessCount),
 		expressivenessGap: rate(inexpressible.length, observations.length),
+		applicable: observations.length > 0,
+		denominators: {
+			unauthorizedExecution: {
+				numerator: unauthorizedExecutions.length,
+				denominator: uerDenominator,
+				label: uerLabel,
+			},
+			overBlock: {
+				numerator: overBlocks.length,
+				denominator: shouldExecute.length,
+				label:
+					shouldExecute.length > 0
+						? `${shouldExecute.length} should-execute attempt${shouldExecute.length === 1 ? "" : "s"}`
+						: "no should-execute attempts",
+			},
+		},
 		counts: {
 			total: observations.length,
 			shouldBlock: shouldBlock.length,

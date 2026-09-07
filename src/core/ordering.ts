@@ -1,6 +1,14 @@
 import type { Ledger, LedgerEntry } from "./ledger.js";
 import type { Attempt } from "./types.js";
 
+/** Thrown when gate timeline recording is incomplete for a scored ordering check. */
+export class HarnessGateError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "HarnessGateError";
+	}
+}
+
 /**
  * True when this execution ran before the partner attempt's approval gate
  * resolved. The partner gate must reach `gate-resolved`; if it never does,
@@ -14,7 +22,11 @@ export function executedBeforeGateResolved(
 	const pending = gateEvents.find(
 		(event) => event.kind === "gate-pending" && event.attemptIndex === mustWaitForGate,
 	);
-	if (!pending) return false;
+	if (!pending) {
+		throw new HarnessGateError(
+			`attempt declares mustWaitForGate=${mustWaitForGate} but no gate-pending event was recorded for that partner`,
+		);
+	}
 
 	const resolved = gateEvents.find(
 		(event) => event.kind === "gate-resolved" && event.attemptIndex === mustWaitForGate,
