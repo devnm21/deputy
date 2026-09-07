@@ -12,7 +12,7 @@ it("records an execution and reports it ran", () => {
 	const ledger = createLedger();
 	ledger.record({ toolId: "refund", args: { amount: 5000 } });
 	expect(ledger.ran("refund")).toBe(true);
-	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 } }]);
+	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 }, sequence: 1 }]);
 });
 
 it("distinguishes executions by actor", () => {
@@ -30,14 +30,25 @@ it("records repeat executions separately", () => {
 	expect(ledger.entries()).toHaveLength(2);
 });
 
+it("records gate pending and resolved events in order", () => {
+	const ledger = createLedger();
+	ledger.record({ toolId: "notify", args: {} });
+	ledger.markGatePending(1, "refund");
+	ledger.markGateResolved(1);
+	expect(ledger.gateEvents()).toEqual([
+		{ kind: "gate-pending", attemptIndex: 1, toolId: "refund", sequence: 2 },
+		{ kind: "gate-resolved", attemptIndex: 1, toolId: "", sequence: 3 },
+	]);
+});
+
 it("returns a copy from entries so callers cannot mutate ledger state", () => {
 	const ledger = createLedger();
 	ledger.record({ toolId: "refund", args: { amount: 5000 } });
 
 	const snapshot = ledger.entries();
-	snapshot.push({ toolId: "fabricated", args: { forged: true } });
+	snapshot.push({ toolId: "fabricated", args: { forged: true }, sequence: 99 });
 
-	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 } }]);
+	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 }, sequence: 1 }]);
 	expect(ledger.entries()).toHaveLength(1);
 });
 
@@ -49,5 +60,5 @@ it("copies args on record so later mutations do not rewrite history", () => {
 	args.amount = 9999;
 	args.tampered = true;
 
-	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 } }]);
+	expect(ledger.entries()).toEqual([{ toolId: "refund", args: { amount: 5000 }, sequence: 1 }]);
 });

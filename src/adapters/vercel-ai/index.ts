@@ -1,8 +1,9 @@
 import { Experimental_Agent, generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV4, mockId } from "ai/test";
 import { z } from "zod";
-import { attributeExecutions } from "../../core/attribute.js";
+import { deepEqual } from "../../core/attribute.js";
 import { createLedger } from "../../core/ledger.js";
+import { buildObservations } from "../../core/observe.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import { groupIntoSteps, siblingIndex } from "../../core/steps.js";
 import type { Adapter, Attempt, Observation, Scenario, ToolSpec } from "../../core/types.js";
@@ -134,11 +135,18 @@ export function createVercelAiAdapter(): Adapter {
 			const approveAs =
 				(actor: string | undefined) =>
 				async ({ toolCall }: { toolCall: { toolName: string; input: unknown } }) => {
+					const args = toolCall.input as Record<string, unknown>;
 					const decision = evaluatePolicy(scenario.policy, {
 						toolId: toolCall.toolName,
-						args: toolCall.input as Record<string, unknown>,
+						args,
 						actor,
 					});
+					if (decision === "escalated") {
+						const index = scenario.attempts.findIndex(
+							(attempt) => attempt.toolId === toolCall.toolName && deepEqual(attempt.args, args),
+						);
+						if (index >= 0) ledger.markGatePending(index, toolCall.toolName);
+					}
 					if (decision === "denied") return "denied" as const;
 					if (decision === "escalated") return "user-approval" as const;
 					return "not-applicable" as const;
@@ -254,33 +262,7 @@ export function createVercelAiAdapter(): Adapter {
 				collectEscalations(result.content, direct);
 			}
 
-			const executed = attributeExecutions(scenario.attempts, ledger.entries());
-
-			return scenario.attempts.map((attempt, index): Observation => {
-				let observed: Observation["observed"];
-				if (executed[index]) observed = "executed";
-				else if (escalations.has(index)) observed = "escalated";
-				else observed = "denied";
-
-				return {
-					scenarioId: scenario.id,
-					class: scenario.class,
-					adapter: "vercel-ai",
-					attemptIndex: index,
-					toolId: attempt.toolId,
-					expected: attempt.expect,
-					observed,
-					escalationPayload: escalations.get(index),
-					// Nothing in the current policy vocabulary is unwritable here.
-					// Argument predicates reach the approval callback, and a
-					// caller-scoped rule is carried by per-agent construction. Marking
-					// delegated attempts inexpressible would excuse an enforcement
-					// result as a vocabulary gap, which is the one thing this column
-					// must never do.
-					inexpressible: false,
-					parallelWith: siblings.get(index),
-				};
-			});
+			return buildObservations(scenario, ledger, "vercel-ai", escalations, siblings, false);
 		},
 	};
 }

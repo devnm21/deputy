@@ -1,4 +1,4 @@
-import { type AttemptIndex, computeMetrics, type Metrics } from "./metrics.js";
+import { type AttemptIndex, computeMetrics, type Metrics, type ScenarioIndex } from "./metrics.js";
 import type { SuiteResult } from "./runner.js";
 import type { Adapter, Capabilities, FailureClass, Observation, Scenario } from "./types.js";
 
@@ -35,6 +35,7 @@ export function buildReport(
 	scenarios: Scenario[],
 ): Report {
 	const attempts: AttemptIndex = new Map(scenarios.map((s) => [s.id, s.attempts]));
+	const scenarioIndex: ScenarioIndex = new Map(scenarios.map((s) => [s.id, s]));
 
 	return {
 		generatedAt: new Date().toISOString(),
@@ -43,13 +44,14 @@ export function buildReport(
 			const classes: Partial<Record<FailureClass, Metrics>> = {};
 			for (const failureClass of CLASSES) {
 				const subset = mine.filter((o) => o.class === failureClass);
-				if (subset.length > 0) classes[failureClass] = computeMetrics(subset, attempts);
+				if (subset.length > 0)
+					classes[failureClass] = computeMetrics(subset, attempts, scenarioIndex);
 			}
 			return {
 				name: adapter.name,
 				frameworkVersion: adapter.frameworkVersion,
 				capabilities: adapter.capabilities,
-				overall: computeMetrics(mine, attempts),
+				overall: computeMetrics(mine, attempts, scenarioIndex),
 				classes,
 			};
 		}),

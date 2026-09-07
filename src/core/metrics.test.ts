@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computeMetrics, payloadCovers } from "./metrics.js";
+import {
+	computeMetrics,
+	humanFacingSurface,
+	labeledFieldCoverage,
+	payloadCovers,
+	scoreEscalationAttempt,
+} from "./metrics.js";
 import type { Attempt, Observation } from "./types.js";
 
 const obs = (over: Partial<Observation>): Observation => ({
@@ -12,6 +18,107 @@ const obs = (over: Partial<Observation>): Observation => ({
 	observed: "denied",
 	inexpressible: false,
 	...over,
+});
+
+describe("labeledFieldCoverage", () => {
+	it("requires field names as keys, not bare values elsewhere", () => {
+		expect(labeledFieldCoverage({ blob: "50000 for acme" }, { amount: 50_000 }, ["amount"])).toBe(
+			0,
+		);
+		expect(labeledFieldCoverage({ amount: 50_000 }, { amount: 50_000 }, ["amount"])).toBe(1);
+	});
+});
+
+describe("scoreEscalationAttempt", () => {
+	it("penalizes Claude when pre-rendered prompt text is absent", () => {
+		const payload = {
+			approvalRequest: {
+				toolName: "mcp__deputy__issue_refund",
+				input: { amount: 50_000, customer: "acme-corp" },
+			},
+		};
+		const score = scoreEscalationAttempt(
+			payload,
+			"claude-agent-sdk",
+			{ amount: 50_000, customer: "acme-corp" },
+			["amount", "customer"],
+			"issue_refund",
+		);
+		expect(score).toBeLessThan(1);
+	});
+
+	it("scores Vercel structured approval requests at 1", () => {
+		const payload = {
+			toolCall: { toolName: "issue_refund", input: { amount: 50_000, customer: "acme-corp" } },
+		};
+		expect(
+			scoreEscalationAttempt(
+				payload,
+				"vercel-ai",
+				{ amount: 50_000, customer: "acme-corp" },
+				["amount", "customer"],
+				"issue_refund",
+			),
+		).toBe(1);
+	});
+});
+
+describe("humanFacingSurface", () => {
+	it("extracts Claude prompt fields separately from input", () => {
+		const surface = humanFacingSurface(
+			{
+				approvalRequest: {
+					toolName: "mcp__deputy__issue_refund",
+					input: { amount: 1 },
+					title: "Approve refund of $50,000",
+				},
+			},
+			"claude-agent-sdk",
+		);
+		expect(surface.title).toBe("Approve refund of $50,000");
+		expect(surface.args).toBeUndefined();
+	});
+});
+
+describe("computeMetrics premature execution", () => {
+	it("counts premature siblings as unauthorized execution", () => {
+		const attempts: Map<string, Attempt[]> = new Map([
+			[
+				"s",
+				[
+					{
+						toolId: "notify",
+						args: {},
+						expect: "executed",
+						mustWaitForGate: 1,
+					},
+					{ toolId: "refund", args: {}, expect: "escalated" },
+				],
+			],
+		]);
+		const m = computeMetrics(
+			[
+				obs({
+					scenarioId: "s",
+					class: "parallel-siblings",
+					expected: "executed",
+					observed: "executed",
+					prematureExecution: true,
+				}),
+				obs({
+					scenarioId: "s",
+					class: "parallel-siblings",
+					attemptIndex: 1,
+					toolId: "refund",
+					expected: "escalated",
+					observed: "escalated",
+				}),
+			],
+			attempts,
+		);
+		expect(m.unauthorizedExecutionRate).toBe(0.5);
+		expect(m.counts.prematureExecutions).toBe(1);
+	});
 });
 
 describe("payloadCovers", () => {
@@ -87,9 +194,10 @@ describe("computeMetrics", () => {
 		const m = computeMetrics(
 			[
 				obs({
+					adapter: "vercel-ai",
 					expected: "escalated",
 					observed: "escalated",
-					escalationPayload: { input: { amount: 5000 } },
+					escalationPayload: { toolCall: { toolName: "t", input: { amount: 5000 } } },
 				}),
 			],
 			attempts,
@@ -204,6 +312,7 @@ describe("computeMetrics", () => {
 			shouldExecute: 3,
 			overBlocks: 2,
 			escalationsScored: 1,
+			prematureExecutions: 0,
 			inexpressible: 1,
 		});
 	});

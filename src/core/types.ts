@@ -36,6 +36,12 @@ export type Attempt = {
 	step?: number;
 	/** Values a human must see to judge an escalation. */
 	decisionCriticalFields?: string[];
+	/**
+	 * Parallel-siblings only: this attempt must not execute until the approval
+	 * gate on the partner attempt index has resolved. Used to score "executed
+	 * too early" via ledger ordering, not via the outcome triple alone.
+	 */
+	mustWaitForGate?: number;
 	/** Which agent issues this call. Undefined means the root agent. */
 	actor?: string;
 };
@@ -95,6 +101,11 @@ export type Observation = {
 	observed: Outcome;
 	/** Present when observed === "escalated". Raw, for informativeness scoring. */
 	escalationPayload?: unknown;
+	/**
+	 * Parallel-siblings only: the tool body ran before a partner gate declared
+	 * by `mustWaitForGate` resolved. Counted as unauthorized execution.
+	 */
+	prematureExecution?: boolean;
 	/** True when the adapter could not express the governing policy rule. */
 	inexpressible: boolean;
 	/**

@@ -6,8 +6,9 @@ import { createTool } from "@mastra/core/tools";
 // must come from the aliased ai@5 install rather than ai@7.
 import { MockLanguageModelV2 } from "ai-v5/test";
 import { z } from "zod";
-import { attributeExecutions } from "../../core/attribute.js";
+import { deepEqual } from "../../core/attribute.js";
 import { createLedger } from "../../core/ledger.js";
+import { buildObservations } from "../../core/observe.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import { groupIntoSteps, type StepEntry, siblingIndex } from "../../core/steps.js";
 import type {
@@ -157,6 +158,22 @@ export function createMastraAdapter(): Adapter {
 			// For non-policy-attachment classes (surface defaults to "tool"), the
 			// existing per-tool `requireApproval` is used — identical to what every
 			// other class has always measured.
+			const markGateIfEscalated = (
+				toolId: string,
+				args: Record<string, unknown>,
+				actor: string | undefined,
+				decision: ReturnType<typeof evaluatePolicy>,
+			) => {
+				if (decision !== "escalated") return;
+				const index = scenario.attempts.findIndex(
+					(attempt) =>
+						attempt.toolId === toolId &&
+						deepEqual(attempt.args, args) &&
+						(attempt.actor ?? undefined) === (actor ?? undefined),
+				);
+				if (index >= 0) ledger.markGatePending(index, toolId);
+			};
+
 			const toolsFor = (owner: string | undefined) =>
 				Object.fromEntries(
 					scenario.tools
@@ -175,12 +192,15 @@ export function createMastraAdapter(): Adapter {
 								// `requireToolApproval`.
 								...(surface === "tool"
 									? {
-											requireApproval: async (input: Record<string, unknown>) =>
-												evaluatePolicy(scenario.policy, {
+											requireApproval: async (input: Record<string, unknown>) => {
+												const decision = evaluatePolicy(scenario.policy, {
 													toolId: spec.id,
 													args: input,
 													actor: owner,
-												}) !== "executed",
+												});
+												markGateIfEscalated(spec.id, input, owner, decision);
+												return decision !== "executed";
+											},
 										}
 									: {}),
 								execute: async (input: Record<string, unknown>, options?: unknown) => {
@@ -214,6 +234,7 @@ export function createMastraAdapter(): Adapter {
 					toolId: ctx.toolName,
 					args: ctx.args,
 				});
+				markGateIfEscalated(ctx.toolName, ctx.args, undefined, decision);
 				return decision !== "executed";
 			};
 
@@ -317,6 +338,8 @@ export function createMastraAdapter(): Adapter {
 					// classification of why is not something Mastra exposes.
 					if (decision === "escalated") escalations.set(entry.index, payload);
 
+					ledger.markGateResolved(entry.index);
+
 					output = (await agent.declineToolCallGenerate({
 						runId: output.runId,
 						toolCallId: payload.toolCallId,
@@ -325,27 +348,7 @@ export function createMastraAdapter(): Adapter {
 				}
 			}
 
-			const executed = attributeExecutions(scenario.attempts, ledger.entries());
-
-			return scenario.attempts.map((attempt, index): Observation => {
-				let observed: Observation["observed"];
-				if (executed[index]) observed = "executed";
-				else if (escalations.has(index)) observed = "escalated";
-				else observed = "denied";
-
-				return {
-					scenarioId: scenario.id,
-					class: scenario.class,
-					adapter: "mastra",
-					attemptIndex: index,
-					toolId: attempt.toolId,
-					expected: attempt.expect,
-					observed,
-					escalationPayload: escalations.get(index),
-					inexpressible: false,
-					parallelWith: siblings.get(index),
-				};
-			});
+			return buildObservations(scenario, ledger, "mastra", escalations, siblings, false);
 		},
 	};
 }

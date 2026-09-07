@@ -8,8 +8,8 @@ import {
 	tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { attributeExecutions } from "../../core/attribute.js";
 import { createLedger } from "../../core/ledger.js";
+import { buildObservations } from "../../core/observe.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import { groupIntoSteps, siblingIndex } from "../../core/steps.js";
 import type { Adapter, Observation, Scenario, ToolSpec } from "../../core/types.js";
@@ -225,7 +225,14 @@ export function createClaudeAgentSdkAdapter(): Adapter {
 									`Scenario "${scenario.id}": canUseTool received toolUseID "${options.toolUseID}" which does not resolve to a known attempt`,
 								);
 							}
-							escalations.set(index, { toolName, input });
+							escalations.set(index, {
+								toolName,
+								input,
+								title: options.title,
+								displayName: options.displayName,
+								description: options.description,
+							});
+							ledger.markGateResolved(index);
 							// Nothing here can answer for a human, so the call is held.
 							return { behavior: "deny", message: "deputy: awaiting human approval" };
 						},
@@ -267,6 +274,7 @@ export function createClaudeAgentSdkAdapter(): Adapter {
 													toolId: attempt.toolId,
 													args: input.tool_input as Record<string, unknown>,
 												});
+												ledger.markGatePending(index, attempt.toolId);
 											}
 
 											return {
@@ -300,36 +308,27 @@ export function createClaudeAgentSdkAdapter(): Adapter {
 				await rm(workDir, { recursive: true, force: true });
 			}
 
-			// Execution comes from the ledger alone. permission_denials is attached
-			// to escalation payloads as a corroborating signal, never as the oracle.
-			const executed = attributeExecutions(scenario.attempts, ledger.entries());
-
-			return scenario.attempts.map((attempt, index): Observation => {
-				let observed: Observation["observed"];
-				if (executed[index]) observed = "executed";
-				else if (escalations.has(index)) observed = "escalated";
-				else observed = "denied";
-
-				const escalation = escalations.get(index);
-				const corroborating = denials.find((d) => d.tool_use_id === toolUseId(index));
-
+			return buildObservations(
+				scenario,
+				ledger,
+				"claude-agent-sdk",
+				escalations,
+				siblings,
+				false,
+			).map((observation) => {
+				const escalation = escalations.get(observation.attemptIndex);
+				const corroborating = denials.find(
+					(d) => d.tool_use_id === toolUseId(observation.attemptIndex),
+				);
+				if (observation.observed !== "escalated" || escalation === undefined) {
+					return observation;
+				}
 				return {
-					scenarioId: scenario.id,
-					class: scenario.class,
-					adapter: "claude-agent-sdk",
-					attemptIndex: index,
-					toolId: attempt.toolId,
-					expected: attempt.expect,
-					observed,
-					escalationPayload:
-						escalation === undefined
-							? undefined
-							: { approvalRequest: escalation, reportedDenial: corroborating },
-					// The hook sees full arguments and agent_id, so every rule in the
-					// current vocabulary is expressible. Any gap is an enforcement
-					// failure and must be scored as one.
-					inexpressible: false,
-					parallelWith: siblings.get(index),
+					...observation,
+					escalationPayload: {
+						approvalRequest: escalation,
+						reportedDenial: corroborating,
+					},
 				};
 			});
 		},
