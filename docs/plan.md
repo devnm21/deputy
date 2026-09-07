@@ -15,6 +15,7 @@
 - Pin all three framework versions exactly (no `^`). The Claude adapter depends on an SSE wire format documented as an open list that grows per release.
 - **zod must be `^4.1.8`.** It is the only range satisfying all four dependents: `@anthropic-ai/claude-agent-sdk` requires `^4.0.0`, `@mastra/core` accepts `^3.25.0 || ^4.0.0`, and both `ai` versions accept `^3.25.76 || ^4.1.8`. `npm install` must succeed without `--legacy-peer-deps`; needing that flag means the tree is inconsistent and two zod copies can break `instanceof` checks inside the frameworks' schema handling.
 - Execution is detected **only** via the tool-body tripwire. Never infer execution from `toolResults`, `staticToolResults`, or any framework result field.
+- **Adapters must attribute executions per attempt, not per tool.** A scenario may attempt the same tool more than once with different arguments, one permitted and one forbidden — `argument-scoping-refund-cap` does exactly that. Asking the ledger only whether a tool ran would credit the forbidden attempt with the permitted attempt's execution and fabricate an unauthorized-execution finding. Use `attributeExecutions` from `src/core/attribute.ts`, which consumes ledger entries so each execution is claimed by exactly one attempt.
 - Every scripted model script must terminate with a text step, or the agent loops to its step ceiling.
 - No network egress in Tier 1. No API keys required to run `npm test`.
 - Metric names in code and report: `unauthorizedExecutionRate`, `overBlockRate`, `escalationInformativeness`, `expressivenessGap`.
@@ -29,6 +30,7 @@
 | `src/core/types.ts` | Scenario, Attempt, PolicyRule, Observation, Outcome, Capabilities, Adapter. No logic. |
 | `src/core/policy.ts` | Reference policy evaluator. Decides the correct outcome for a call. Used to verify scenarios are self-consistent. |
 | `src/core/ledger.ts` | Execution tripwire. Records which tool bodies actually ran. |
+| `src/core/attribute.ts` | Attributes recorded executions to individual attempts. Shared by all three adapters. |
 | `src/core/metrics.ts` | Reduces observations to the four metrics. |
 | `src/core/report.ts` | Renders observations + metrics to JSON and markdown. |
 | `src/core/runner.ts` | Runs scenarios against adapters, collects observations. |
