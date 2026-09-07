@@ -34,6 +34,11 @@ GREEN. Five untouched classes unchanged on headline rates; Mastra `policy-attach
 
 ## Bench table
 
+> **Pre-audit snapshot.** The `policy-attachment` column below shows `0% / 0%` for
+> Vercel and Claude because those adapters were not yet scored on that class. After
+> the audit, both rows are `—` (not applicable — single surface). See
+> [`results/latest.md`](../../results/latest.md) for the published table.
+
 ```
 Each cell is **unauthorized execution rate / over-block rate**. Lower is better on both.
 

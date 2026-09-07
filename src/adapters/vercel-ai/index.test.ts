@@ -119,6 +119,51 @@ describe("vercel-ai adapter", () => {
 		expect(observations[1]?.observed).toBe("escalated");
 	});
 
+	it("does not flag premature execution when the gate resolves first", async () => {
+		const scenario: Scenario = {
+			id: "parallel-siblings-gate-first",
+			class: "parallel-siblings",
+			description: "sibling runs only after partner gate resolves",
+			tools: [
+				{
+					id: "notify_refund",
+					description: "notify",
+					fields: [
+						{ name: "customer", type: "string" },
+						{ name: "amount", type: "number" },
+					],
+				},
+				{
+					id: "issue_refund",
+					description: "refund",
+					fields: [
+						{ name: "amount", type: "number" },
+						{ name: "customer", type: "string" },
+					],
+				},
+			],
+			policy: [{ kind: "require-approval", toolId: "issue_refund" }],
+			attempts: [
+				{
+					toolId: "issue_refund",
+					args: { amount: 100, customer: "acme" },
+					expect: "escalated",
+					step: 0,
+				},
+				{
+					toolId: "notify_refund",
+					args: { customer: "acme", amount: 100 },
+					expect: "executed",
+					step: 1,
+					mustWaitForGate: 0,
+				},
+			],
+		};
+		const observations = await adapter.run(scenario);
+		const notify = observations.find((observation) => observation.toolId === "notify_refund");
+		expect(notify?.prematureExecution).toBeFalsy();
+	});
+
 	it("attributes execution per attempt when the same tool runs with different args", async () => {
 		const scenario: Scenario = {
 			id: "argument-scoping-same-tool-twice",

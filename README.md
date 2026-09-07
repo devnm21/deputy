@@ -177,7 +177,13 @@ Pinned targets: `ai@7.0.93`, `@mastra/core@1.64.0`,
 
 Output lands in `results/latest.json` (every scenario id, adapter, framework version,
 expected outcome, and observed outcome) and `results/latest.md` (the rendered table).
-A single disputed cell can be re-run without the whole suite.
+A single disputed cell can be re-run without the whole suite:
+
+```bash
+npm run bench -- --adapter mastra --scenario policy-attachment-caller-surface-delegation --out /tmp/deputy-cell
+```
+
+Filtered runs write only to `--out` and do not overwrite `results/latest.*`.
 
 ## License
 

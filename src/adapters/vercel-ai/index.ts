@@ -141,13 +141,16 @@ export function createVercelAiAdapter(): Adapter {
 						args,
 						actor,
 					});
+					const index = scenario.attempts.findIndex(
+						(attempt) => attempt.toolId === toolCall.toolName && deepEqual(attempt.args, args),
+					);
 					if (decision === "escalated") {
-						const index = scenario.attempts.findIndex(
-							(attempt) => attempt.toolId === toolCall.toolName && deepEqual(attempt.args, args),
-						);
 						if (index >= 0) ledger.markGatePending(index, toolCall.toolName);
 					}
-					if (decision === "denied") return "denied" as const;
+					if (decision === "denied") {
+						if (index >= 0) ledger.markGateResolved(index);
+						return "denied" as const;
+					}
 					if (decision === "escalated") return "user-approval" as const;
 					return "not-applicable" as const;
 				};
@@ -174,7 +177,10 @@ export function createVercelAiAdapter(): Adapter {
 							JSON.stringify(attempt.args) === JSON.stringify(part.toolCall?.input) &&
 							!escalations.has(index),
 					);
-					if (entry) escalations.set(entry.index, part);
+					if (entry) {
+						escalations.set(entry.index, part);
+						ledger.markGateResolved(entry.index);
+					}
 				}
 			};
 

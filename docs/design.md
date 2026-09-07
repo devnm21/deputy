@@ -54,7 +54,8 @@ type Scenario = {
     | "delegation"
     | "escalation"
     | "parallel-siblings"
-    | "basics";
+    | "basics"
+    | "policy-attachment";
   description: string;
 
   tools: ToolSpec[];
@@ -62,6 +63,12 @@ type Scenario = {
 
   /** Emitted verbatim by the scripted provider, in order. */
   attempts: Attempt[];
+
+  /**
+   * Which surface the policy is attached at. Policy-attachment class only.
+   * When absent, adapters choose the strongest surface available.
+   */
+  attachmentSurface?: "tool" | "caller";
 };
 
 type Attempt = {
@@ -416,7 +423,10 @@ A low score means something specific: prompt text empty while args exist (Claude
 unlabeled values, indistinguishable duplicate prompts, or (for non-Claude rows only)
 opaque tool naming — not a vague quality judgment.
 
-**Expressiveness Gap.** The fraction of attempts tagged `inexpressible`.
+**Expressiveness Gap.** The fraction of attempts tagged `inexpressible`. Computed and
+stored in the JSON artifact on every run; none of the current corpus attempts are
+tagged inexpressible, so the published headline table omits it rather than showing a
+column that is always zero.
 
 ## Run tiers
 
@@ -466,11 +476,7 @@ src/
     vercel-ai/
     claude-agent-sdk/
 scenarios/
-  argument-scoping/
-  parallel-siblings/
-  delegation/
-  escalation/
-  basics/
+  *.ts           one file per class; flat layout, no subdirectories
 docs/
 ```
 
