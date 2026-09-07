@@ -10,3 +10,4 @@ Task 3: complete (commits ab44062..e4ad0ed, re-review clean; copy-on-capture + 2
 Task 4: complete (commits 0055e16..5be436b, review clean; token-bounded payload matching + coverage fixes, 40 tests)
 Task 5: complete (commits 14a2e52..dfa8319, review approved; per-attempt attribution fix, isAutomatic discovery, 55 tests)
   Minor carried: order-preservation test documents intent but is not yet a regression detector (needs Task 11 order-sensitive scenarios)
+Task 6: complete (commits 1016312..a1d5094, review approved; same-tool basics pair added for discrimination, failure stacks, 60 tests)
