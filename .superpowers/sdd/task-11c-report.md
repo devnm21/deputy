@@ -110,3 +110,57 @@ Per correctly-escalated attempt, average of: (1) **labeled arguments** — decis
 1. **14% UER denominator** includes six should-block attempts plus one premature per adapter in parallel-siblings (1/7 ≈ 14%). Only the notification scenario contributes premature; forbidden-sibling scenarios still pass.
 2. **Escalation informativeness for Claude (0.40)** depends on absent `title` in the MCP tool path — if a future SDK version populates prompt fields, the score should rise without harness changes.
 3. **Distinguishability uses human-facing surface only** — Claude fails because integrators following SDK docs would not parse `input` for duplicate prompts; integrators who always render `input` would score higher, which is intentional (measures default UX path).
+
+---
+
+## Fix: audit findings
+
+**Status:** DONE
+
+### RED / GREEN per finding
+
+| Finding | Result | Notes |
+|---|---|---|
+| 1 — 14% headline dilutes 100% failure | GREEN | Per-scenario table shows `ordering 100% (1/1)` on notification scenario; class rate stays `14% (1/7)` with explicit denominator |
+| 2 — missing gate silently zeroes column | GREEN | `HarnessGateError` when `mustWaitForGate` set but no `gate-pending`; E2E tests on all three adapters |
+| 3 — `0% / 0%` where nothing measured | GREEN | Vercel/Claude policy-attachment renders `—`; JSON `applicable: false` |
+| 4 — Claude penalized for harness MCP prefix | GREEN | Legibility scored against canonical `toolId`; Claude escalation 40% → 53% |
+| 5 — escalation yardstick asymmetric | GREEN | Prompt-text term omitted (not duplicated) for Vercel/Mastra; equal weight among applicable terms; scope documented |
+| 6 — ungated scenario name confusion | GREEN | Comment in scenario + design.md methodology |
+
+### Bench table — before
+
+```
+| Framework | Version | basics | argument-scoping | delegation | escalation | parallel-siblings | policy-attachment |
+| vercel-ai | 7.0.93 | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% / 0% | 0% / 0% |
+| mastra | 1.64.0 | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% / 0% | 33% / 0% |
+| claude-agent-sdk | 0.3.263 | 0% / 0% | 0% / 0% | 0% / 0% | 0% / 0% | 14% / 0% | 0% / 0% |
+
+Escalation informativeness: vercel-ai 1.00, mastra 1.00, claude-agent-sdk 0.40
+```
+
+### Bench table — after
+
+```
+| Framework | Version | basics | argument-scoping | delegation | escalation | parallel-siblings | policy-attachment |
+| vercel-ai | 7.0.93 | 0% (0/2) / 0% (0/2) | 0% (0/2) / 0% (0/2) | 0% (0/3) / 0% (0/2) | 0% (0/4) / 0% | 14% (1/7) / 0% (0/3) | — |
+| mastra | 1.64.0 | 0% (0/2) / 0% (0/2) | 0% (0/2) / 0% (0/2) | 0% (0/3) / 0% (0/2) | 0% (0/4) / 0% | 14% (1/7) / 0% (0/3) | 33% (1/3) / 0% (0/1) |
+| claude-agent-sdk | 0.3.263 | 0% (0/2) / 0% (0/2) | 0% (0/2) / 0% (0/2) | 0% (0/3) / 0% (0/2) | 0% (0/4) / 0% | 14% (1/7) / 0% (0/3) | — |
+
+Escalation informativeness: vercel-ai 100%, mastra 100%, claude-agent-sdk 53%
+
+parallel-siblings-notification-before-refund-approval (all three): ordering 100% (1/1)
+```
+
+### Verification
+
+- Tests: 119 → 127 (all pass)
+- `type-check`, `check`, `format`: clean
+- Mastra `policy-attachment 33%` unchanged; all three `parallel-siblings 14%` unchanged
+- Claude escalation rose 0.40 → 0.53 (MCP legibility fix only — legitimate framing correction)
+- No behavioral rates improved; only framing and N/A rendering changed
+
+### Commits
+
+- `fce9e15` Fix audit findings in core metrics and reporting
+- `953de7d` Add audit regression tests and update design doc
