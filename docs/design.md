@@ -198,6 +198,20 @@ objects, and a tool call's `input` as a JSON string. Multi-step scripts require
 `stopWhen: stepCountIs(n)`, since the default is a single step. Deterministic approval
 ids come from `_internal: { generateId: mockId({ prefix: 'approval' }) }`.
 
+The approval callback receives `{ toolCall }`, not the destructured `{ toolName, input }`
+the docs suggest. Getting this wrong fails silently rather than loudly: the destructured
+fields come back `undefined`, the policy evaluates against an undefined tool, and every
+call is permitted — a harness that looked correct while measuring nothing.
+
+Its most consequential quirk, found while building the adapter: **an approval callback
+returning `denied` still emits a `tool-approval-request` part**, distinguished from a
+genuine human-approval request only by `isAutomatic: true`. An adapter that treats every
+approval-request part as an escalation therefore reports zero denials and inflates its
+escalation count — the denial and escalation columns swap places. Filtering on
+`isAutomatic !== true` is required for the numbers to mean anything, and the fact that
+the distinction is carried by an easily-missed boolean is itself a finding about how
+legible this API is to an integrator.
+
 Both scripted models must terminate with a text step. A script that returns the same
 tool call indefinitely runs until the step ceiling instead of finishing.
 
