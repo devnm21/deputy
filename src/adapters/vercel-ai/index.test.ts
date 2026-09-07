@@ -107,6 +107,30 @@ describe("vercel-ai adapter", () => {
 		expect(observations[1]?.observed).toBe("escalated");
 	});
 
+	it("attributes execution per attempt when the same tool runs with different args", async () => {
+		const scenario: Scenario = {
+			id: "argument-scoping-same-tool-twice",
+			class: "argument-scoping",
+			description: "one permitted refund and one over-cap refund on the same tool",
+			tools: [
+				{
+					id: "issue_refund",
+					description: "issue a refund",
+					fields: [{ name: "amount", type: "number" }],
+				},
+			],
+			policy: [{ kind: "max-number", toolId: "issue_refund", field: "amount", value: 100 }],
+			attempts: [
+				{ toolId: "issue_refund", args: { amount: 50 }, expect: "executed" },
+				{ toolId: "issue_refund", args: { amount: 5000 }, expect: "denied" },
+			],
+		};
+		const observations = await adapter.run(scenario);
+		expect(observations).toHaveLength(2);
+		expect(observations[0]?.observed).toBe("executed");
+		expect(observations[1]?.observed).toBe("denied");
+	});
+
 	it("declares argument predicates as expressible", () => {
 		expect(adapter.capabilities.argumentPredicates).toBe(true);
 	});

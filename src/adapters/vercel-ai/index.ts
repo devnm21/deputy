@@ -1,6 +1,7 @@
 import { generateText, stepCountIs, tool } from "ai";
 import { MockLanguageModelV4, mockId } from "ai/test";
 import { z } from "zod";
+import { attributeExecutions } from "../../core/attribute.js";
 import { createLedger } from "../../core/ledger.js";
 import { evaluatePolicy } from "../../core/policy.js";
 import type { Adapter, Attempt, Observation, Scenario, ToolSpec } from "../../core/types.js";
@@ -126,9 +127,11 @@ export function createVercelAiAdapter(): Adapter {
 				}
 			}
 
+			const executed = attributeExecutions(scenario.attempts, ledger.entries());
+
 			return scenario.attempts.map((attempt, index): Observation => {
 				let observed: Observation["observed"];
-				if (ledger.ran(attempt.toolId)) observed = "executed";
+				if (executed[index]) observed = "executed";
 				else if (escalations.has(index)) observed = "escalated";
 				else observed = "denied";
 
